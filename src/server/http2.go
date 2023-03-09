@@ -31,7 +31,7 @@ func (h2a *AbcHttp2Server) ServeHTTP(writer http.ResponseWriter, req *http.Reque
 			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		wrapConn := &TunnelConn{Tuntype: "h2", h2socket: h2ccc}
+		wrapConn := &TunnelConn{Tuntype: "h2", H2socket: h2ccc}
 		if h2a.tunHandler != nil {
 			h2a.tunHandler(wrapConn)
 		}

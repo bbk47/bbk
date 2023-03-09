@@ -11,7 +11,7 @@ type TlsTransport struct {
 	conn net.Conn
 }
 
-func (ts *TlsTransport) Send(data []byte) (err error) {
+func (ts *TlsTransport) SendPacket(data []byte) (err error) {
 
 	length := len(data)
 	data2 := append([]byte{uint8(length >> 8), uint8(length % 256)}, data...)

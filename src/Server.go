@@ -1,13 +1,12 @@
 package bbk
 
 import (
-	"bbk/src/protocol"
+	"bbk/src/serializer"
 	"bbk/src/server"
 	"bbk/src/transport"
 	"bbk/src/utils"
 	"fmt"
 	"github.com/bbk47/toolbox"
-	"io"
 	"net"
 	"sync"
 )
@@ -34,7 +33,7 @@ type Target struct {
 type Server struct {
 	opts    Option
 	logger  *toolbox.Logger
-	serizer *Serializer
+	serizer *serializer.Serializer
 
 	connMap   sync.Map
 	targetMap sync.Map
@@ -54,144 +53,36 @@ func NewServer(opt Option) Server {
 	return s
 }
 
-func (servss *Server) handleConnection(tunconn *server.TunnelConn) {
-	evts := &transport.Events{Data: make(chan []byte), Status: make(chan string)}
-
-	go tunconn.BindEvents(evts)
-	if tunconn.Tuntype == "h2" {
-		servss.handleEvents(tunconn, evts)
-	} else {
-		go servss.handleEvents(tunconn, evts)
-	}
-}
-
-func (servss *Server) handleEvents(tunconn *server.TunnelConn, evts *transport.Events) {
-	servss.logger.Infof("listening %s events!\n", servss.opts.WorkMode)
-	connectObj := &ConnectObj{tconn: tunconn}
-	for {
-		select {
-		case message := <-evts.Status:
-			if message == "open" {
-				// send first frame
-			} else if message == "close" {
-				servss.releaseTunnel(connectObj)
-			} else {
-				// error
-				servss.logger.Errorf("tunnel error:%s\n", message)
-				servss.releaseTunnel(connectObj)
+func (servss *Server) handleConnection(tunnel *server.TunnelConn) {
+	fmt.Println("handle connection===")
+	tsport := transport.WrapTunnel(tunnel)
+	serverStub := transport.NewTunnelStub(tsport, servss.serizer)
+	go serverStub.ListenPacket()
+	go func() {
+		for {
+			stream, err := serverStub.Accept()
+			if err != nil {
+				// transport error
+				continue
 			}
-		case packet := <-evts.Data:
-			servss.logger.Debugf("receive %s packet bytes:%d\n", connectObj.Mode, len(packet))
-			servss.handleConnMessage(connectObj, packet)
+			go servss.handleStream(serverStub, stream)
 		}
-	}
-}
-
-func (servss *Server) handleConnMessage(connectObj *ConnectObj, buf []byte) {
-	//fmt.Printf("datalen:%d\n", len(buf))
-	frame, err := servss.serizer.Derialize(buf)
-
-	if err != nil {
-		servss.logger.Errorf("derialize data err:%s", err.Error())
-		return
-	}
-	servss.logger.Debugf("read tunnel cid:%s, data[%d]bytes\n", frame.Cid, len(buf))
-	if frame.Type == protocol.PING_FRAME {
-		timebs := toolbox.GetNowInt64Bytes()
-		data := append(frame.Data, timebs...)
-		pongFrame := protocol.Frame{Cid: "00000000000000000000000000000000", Type: protocol.PONG_FRAME, Data: data}
-		servss.flushRespFrame(connectObj, &pongFrame)
-	} else {
-		servss.dispatchReqFrame(connectObj, frame)
-	}
-}
-
-func (servss *Server) dispatchReqFrame(connobj *ConnectObj, frame *protocol.Frame) {
-	if frame.Type == protocol.INIT_FRAME {
-		targetObj := Target{cid: frame.Cid}
-		targetObj.dataCache = make(chan []byte, 1024*4)
-		addrInfo, err := toolbox.ParseAddrInfo(frame.Data)
-		if err != nil {
-			servss.logger.Errorf("protol error %s", err.Error())
-			return
-		}
-		servss.targetMap.Store(frame.Cid, &targetObj)
-
-		servss.logger.Infof("REQ CONNECT=>%s:%d\n", addrInfo.Addr, addrInfo.Port)
-		remoteAddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
-		go servss.dialTcpConn(&targetObj, frame, remoteAddr, connobj)
-	} else if frame.Type == protocol.STREAM_FRAME {
-		//servss.logger.Info("STREAM_FRAME===")
-		targetObj := servss.resolveTarget(frame.Cid)
-		if targetObj == nil {
-			return
-		}
-		targetObj.dataCache <- frame.Data
-	} else if frame.Type == protocol.FIN_FRAME {
-		//servss.logger.Info("FIN_FRAME===")
-		targetObj := servss.resolveTarget(frame.Cid)
-		if targetObj == nil || targetObj.socket == nil {
-			return
-		}
-		socket := targetObj.socket
-		socket.Close()
-		servss.releaseTarget(targetObj)
-	}
-}
-
-func (servss *Server) dialTcpConn(targetObj *Target, frame *protocol.Frame, remoteAddr string, connobj *ConnectObj) {
-	tSocket, err := net.DialTimeout("tcp", remoteAddr, CONNECT_TIMEOUT)
-	if err != nil {
-		servss.logger.Errorf("dial target[%s] err:\n", remoteAddr)
-		servss.logger.Errorf("%s\n", err.Error())
-		return
-	}
-	targetObj.socket = tSocket
-	targetObj.closed = make(chan uint8)
-	estFrame := protocol.Frame{Cid: frame.Cid, Type: protocol.EST_FRAME, Data: frame.Data}
-	servss.flushRespFrame(connobj, &estFrame)
-
-	servss.logger.Infof("connect %s success.\n", remoteAddr)
-	// receive tcp data
-	go servss.receiveFromTarget(connobj, targetObj)
-	// write tcp conn data
-	for {
-		select {
-		case data := <-targetObj.dataCache:
-			tSocket.Write(data)
-		case <-targetObj.closed:
-			return
-		}
-	}
-
-}
-
-func (servss *Server) receiveFromTarget(connobj *ConnectObj, targetobj *Target) {
-	tSocket := targetobj.socket
-	defer func() {
-		targetobj.closed <- 1
-		tSocket.Close()
-		servss.releaseTarget(targetobj)
 	}()
-	for {
-		// 接收数据
-		cache := make([]byte, 1024)
-		len2, err := tSocket.Read(cache)
-		if err == io.EOF {
-			// eof read from target socket, close by target peer
-			finFrame := protocol.Frame{Cid: targetobj.cid, Type: protocol.FIN_FRAME, Data: []byte{0x1, 0x2}}
-			servss.flushRespFrame(connobj, &finFrame)
-			return
-		}
-		if err != nil {
-			servss.logger.Error(err.Error())
-			rstFrame := protocol.Frame{Cid: targetobj.cid, Type: protocol.RST_FRAME, Data: []byte{0x1, 0x2}}
-			servss.flushRespFrame(connobj, &rstFrame)
-			return
-		}
-		respFrame := protocol.Frame{Cid: targetobj.cid, Type: protocol.STREAM_FRAME, Data: cache[:len2]}
-		servss.flushRespFrame(connobj, &respFrame)
+}
+
+func (servss *Server) handleStream(stub *transport.TunnelStub, stream *transport.Stream) {
+	addrInfo, err := toolbox.ParseAddrInfo(stream.Addr)
+	servss.logger.Infof("REQ CONNECT=>%s:%d\n", addrInfo.Addr, addrInfo.Port)
+	remoteAddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
+	//destAddrPort := fmt.Sprintf("%s:%d", addr, port)
+	tsocket, err := net.Dial("tcp", remoteAddr)
+	if err != nil {
+		return
 	}
+	fmt.Println("dial success===>")
+	stub.SetReady(stream)
+	go transport.SocketPipe(stream, tsocket)
+	go transport.SocketPipe(tsocket, stream)
 }
 
 func (servss *Server) releaseTunnel(connectObj *ConnectObj) {
@@ -217,30 +108,6 @@ func (servss *Server) resolveTarget(frameId string) *Target {
 func (servss *Server) releaseTarget(targetObj *Target) {
 	targetObj.socket = nil
 	servss.targetMap.Delete(targetObj.cid)
-}
-
-func (servss *Server) sendRespFrame(connobj *ConnectObj, frame *protocol.Frame) {
-
-	if connobj == nil {
-		return // ignore missing tunnel
-	}
-	// 序列化数据
-	binaryData := servss.serizer.Serialize(frame)
-	servss.tsLock.Lock()
-	defer servss.tsLock.Unlock()
-	// 发送数据
-	err := connobj.tconn.SendPacket(binaryData)
-	if err != nil {
-		servss.releaseTunnel(connobj)
-	}
-}
-
-func (servss *Server) flushRespFrame(connobj *ConnectObj, frame *protocol.Frame) {
-
-	frames := protocol.FrameSegment(frame)
-	for _, smallframe := range frames {
-		servss.sendRespFrame(connobj, smallframe)
-	}
 }
 
 func (servss *Server) checkServerOk(srv server.FrameServer, err error) {
@@ -273,7 +140,7 @@ func (servss *Server) initServer() {
 
 func (servss *Server) initSerizer() {
 	opt := servss.opts
-	serizer, err := NewSerializer(opt.Method, opt.Password)
+	serizer, err := serializer.NewSerializer(opt.Method, opt.Password)
 	if err != nil {
 		servss.logger.Fatal(err)
 	}

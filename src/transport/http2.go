@@ -45,7 +45,7 @@ func BindH2cStreamEvents(h2stream *h2conn.Conn, events *Events) {
 	}
 }
 
-func (ts *Http2Transport) Send(data []byte) (err error) {
+func (ts *Http2Transport) SendPacket(data []byte) (err error) {
 	length := len(data)
 	data2 := append([]byte{uint8(length >> 8), uint8(length % 256)}, data...)
 	_, err = ts.h2socket.Write(data2)

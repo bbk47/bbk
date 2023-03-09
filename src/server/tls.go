@@ -17,7 +17,7 @@ func (tcpss *AbcTlsServer) ListenConn(handler func(conn *TunnelConn)) {
 		if err != nil {
 			continue
 		}
-		wrapConn := &TunnelConn{Tuntype: "tls", tcpSocket: conn}
+		wrapConn := &TunnelConn{Tuntype: "tls", TcpSocket: conn}
 		handler(wrapConn)
 	}
 }

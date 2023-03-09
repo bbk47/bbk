@@ -6,7 +6,7 @@ import (
 	"net"
 )
 
-type Proxy interface {
+type ProxySocket interface {
 	Read(b []byte) (n int, err error)
 	Write(b []byte) (n int, err error)
 	Close() error

@@ -27,7 +27,7 @@ func (wss *AbcWssServer) ServeHTTP(writer http.ResponseWriter, req *http.Request
 			writer.Write([]byte(err.Error()))
 			return
 		}
-		wrapConn := &TunnelConn{Tuntype: "ws", wSocket: wsconn}
+		wrapConn := &TunnelConn{Tuntype: "ws", Wsocket: wsconn}
 		if wss.tunHandler != nil {
 			wss.tunHandler(wrapConn)
 		}

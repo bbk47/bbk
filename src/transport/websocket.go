@@ -9,7 +9,7 @@ type WebsocketTransport struct {
 	conn *websocket.Conn
 }
 
-func (wst *WebsocketTransport) Send(data []byte) (err error) {
+func (wst *WebsocketTransport) SendPacket(data []byte) (err error) {
 	return SendWsSocket(wst.conn, data)
 }
 

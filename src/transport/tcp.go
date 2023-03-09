@@ -11,7 +11,7 @@ type TcpTransport struct {
 	conn net.Conn
 }
 
-func (ts *TcpTransport) Send(data []byte) (err error) {
+func (ts *TcpTransport) SendPacket(data []byte) (err error) {
 	return SendStreamSocket(ts.conn, data)
 }
 

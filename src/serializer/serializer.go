@@ -1,4 +1,4 @@
-package bbk
+package serializer
 
 import (
 	"bbk/src/protocol"

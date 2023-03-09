@@ -27,6 +27,8 @@ type Frame struct {
 	Cid     string
 	Type    uint8
 	Data    []byte
+	Stime   int
+	Atime   int
 }
 
 func Encode(frame *Frame) []byte {
