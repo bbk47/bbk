@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"github.com/avast/retry-go"
 	"github.com/bbk47/toolbox"
+	"io"
 	"net"
 	"sync"
 	"time"
 )
 
 type BrowserObj struct {
+	host        string
 	proxysocket proxy.ProxySocket
 	stream      *transport.Stream
 	start       chan uint8
@@ -94,11 +96,12 @@ func (cli *Client) setupwsConnection() error {
 }
 
 func (cli *Client) handleStream(stream *transport.Stream) {
-	fmt.Println("stream create success")
+
 	browerobj := cli.browserProxy[stream.Cid]
 	if browerobj == nil {
 		return
 	}
+	cli.logger.Infof("stream %s create success\n", browerobj.host)
 	browerobj.stream = stream
 	browerobj.start <- 1
 }
@@ -114,21 +117,35 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	remoteaddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
 	cli.logger.Infof("COMMAND===%s\n", remoteaddr)
 
-	newbrowserobj := &BrowserObj{proxysocket: socket, start: make(chan uint8)}
+	newbrowserobj := &BrowserObj{proxysocket: socket, start: make(chan uint8), host: remoteaddr}
 	cli.reqch <- newbrowserobj
+
+	defer func() {
+		if newbrowserobj.stream != nil {
+			newbrowserobj.stream.Close()
+		}
+	}()
 
 	select {
 	case <-newbrowserobj.start: // 收到信号才开始读
-		fmt.Println("start socket pipe===")
-		go transport.SocketPipe(socket, newbrowserobj.stream)
-		transport.SocketPipe(newbrowserobj.stream, socket)
+		//go transport.SocketPipe(socket, newbrowserobj.stream)
+		//go transport.SocketPipe(newbrowserobj.stream, socket)
+		go func() {
+			_, err := io.Copy(newbrowserobj.stream, socket)
+			if err != nil {
+				fmt.Println("111 time:", time.Now().UnixNano(), " =", err)
+			}
+		}()
+		_, err = io.Copy(socket, newbrowserobj.stream)
+		if err != nil {
+			fmt.Println("222 time:", time.Now().UnixNano(), " =", err)
+		}
 	case <-time.After(10 * time.Second):
 		cli.logger.Warnf("connect %s timeout 10000ms exceeded!", remoteaddr)
 	}
 }
 
 func (cli *Client) serviceWorker() {
-	tick := time.NewTicker(3 * time.Second)
 	go func() {
 		for {
 			//fmt.Println("check====request===")
@@ -139,20 +156,22 @@ func (cli *Client) serviceWorker() {
 				}
 			}
 
-			//select {
-			//case ref := <-cli.reqch:
-			//	fmt.Println("check====request==11=")
-			//
-			//	st := cli.stubclient.StartStream(ref.proxysocket.GetAddr())
-			//	cli.browserProxy[st.Cid] = ref
-			//}
 			select {
-			case <-tick.C:
-				fmt.Println("ping sub client")
-				if cli.stubclient != nil {
-					cli.stubclient.Ping()
-				}
-			default:
+			case ref := <-cli.reqch:
+				cli.logger.Infof("start stream for =====>%s\n", ref.host)
+				st, _ := cli.stubclient.StartStream(ref.proxysocket.GetAddr())
+				cli.browserProxy[st.Cid] = ref
+			}
+		}
+	}()
+}
+func (cli *Client) keepPingWs() {
+	go func() {
+		ticker := time.Tick(time.Second * 30)
+		for range ticker {
+			if cli.stubclient != nil {
+				//fmt.Println("ping===>")
+				cli.stubclient.Ping()
 			}
 		}
 	}()
@@ -202,5 +221,6 @@ func (cli *Client) initSerizer() {
 func (cli *Client) Bootstrap() {
 	cli.initSerizer()
 	cli.serviceWorker()
+	cli.keepPingWs()
 	cli.initServer()
 }

@@ -7,8 +7,10 @@ import (
 	"bbk/src/utils"
 	"fmt"
 	"github.com/bbk47/toolbox"
+	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 type ConnectObj struct {
@@ -79,35 +81,22 @@ func (servss *Server) handleStream(stub *transport.TunnelStub, stream *transport
 	if err != nil {
 		return
 	}
-	fmt.Println("dial success===>")
+	servss.logger.Infof("dial success===>%s:%d\n", addrInfo.Addr, addrInfo.Port)
 	stub.SetReady(stream)
-	go transport.SocketPipe(stream, tsocket)
-	go transport.SocketPipe(tsocket, stream)
-}
-
-func (servss *Server) releaseTunnel(connectObj *ConnectObj) {
-	servss.connMap.Delete(connectObj.Id)
-}
-
-func (servss *Server) resolveTunnel(tunnelId string) *ConnectObj {
-	ref, ok := servss.connMap.Load(tunnelId)
-	if ok == false {
-		return nil
+	defer func() {
+		tsocket.Close()
+		stream.Close()
+	}()
+	go func() {
+		_, err := io.Copy(tsocket, stream)
+		if err != nil {
+			fmt.Println("111 time:", time.Now().UnixNano(), " =", err)
+		}
+	}()
+	_, err = io.Copy(stream, tsocket)
+	if err != nil {
+		fmt.Println("222 time:", time.Now().UnixNano(), " =", err)
 	}
-	return ref.(*ConnectObj)
-}
-
-func (servss *Server) resolveTarget(frameId string) *Target {
-	target, ok := servss.targetMap.Load(frameId)
-	if ok == false {
-		return nil
-	}
-	return target.(*Target)
-}
-
-func (servss *Server) releaseTarget(targetObj *Target) {
-	targetObj.socket = nil
-	servss.targetMap.Delete(targetObj.cid)
 }
 
 func (servss *Server) checkServerOk(srv server.FrameServer, err error) {

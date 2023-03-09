@@ -25,9 +25,9 @@ func NewStream(cid string, addr []byte) *Stream {
 }
 
 func (s *Stream) produce(data []byte) error {
-	if s.state == 2 {
-		return errors.New("stream closed")
-	}
+	//if s.state == 2 {
+	//	return errors.New("stream closed")
+	//}
 	s.rbuf <- data
 	return nil
 }
@@ -38,29 +38,28 @@ func (s *Stream) Read(data []byte) (n int, err error) {
 		return 0, errors.New("stream closed")
 	}
 	n = copy(data, bts)
+	fmt.Println("read stream data:", n)
 	return n, nil
 }
 
 func (s *Stream) Write(p []byte) (n int, err error) {
-	fmt.Println("write to stream===", len(p))
+	//fmt.Println("write to stream===", len(p))
 	s.wbuf <- p
+	fmt.Println("write stream data:", len(p))
 	return len(p), nil
 }
 
 func (s *Stream) Close() error {
 	s.state = 2
-	//close(s.wbuf)
-	//close(s.rbuf)
+	close(s.wbuf)
+	close(s.rbuf)
 	return nil
 }
 
 func SocketPipe(src io.ReadCloser, dest io.WriteCloser) {
-	defer src.Close()
-	defer dest.Close()
 	// func Copy(dst Writer, src Reader), src->pipe->dest
 	_, err := io.Copy(dest, src)
 	if err != nil {
 		fmt.Println("err:", err.Error())
 	}
-	return
 }
