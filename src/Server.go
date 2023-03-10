@@ -57,7 +57,6 @@ func (servss *Server) handleConnection(tunnel *server.TunnelConn) {
 	fmt.Println("handle connection===")
 	tsport := transport.WrapTunnel(tunnel)
 	serverStub := transport.NewTunnelStub(tsport, servss.serizer)
-	go serverStub.Start()
 	go func() {
 		for {
 			stream, err := serverStub.Accept()
@@ -83,7 +82,7 @@ func (servss *Server) handleStream(stub *transport.TunnelStub, stream *transport
 	}
 	defer tsocket.Close()
 	servss.logger.Infof("dial success===>%s:%d\n", addrInfo.Addr, addrInfo.Port)
-	err = stub.SetReady(stream)
+	stub.SetReady(stream)
 	go transport.SocketPipe(stream, tsocket)
 	transport.SocketPipe(tsocket, stream)
 }

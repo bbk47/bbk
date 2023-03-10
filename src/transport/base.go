@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bbk47/toolbox"
+	"log"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -36,15 +36,18 @@ type TunnelStub struct {
 	serizer  *serializer.Serializer
 	tsport   Transport
 	streamch chan *Stream
+	sendch   chan *protocol.Frame
 	close    chan uint8
 	streams  map[string]*Stream
-	wlock    sync.Mutex
 }
 
 func NewTunnelStub(tsport Transport, serizer *serializer.Serializer) *TunnelStub {
 	stub := TunnelStub{tsport: tsport, serizer: serizer}
 	stub.streamch = make(chan *Stream, 256)
+	stub.sendch = make(chan *protocol.Frame, 1024)
 	stub.streams = make(map[string]*Stream)
+	go stub.readWorker()
+	go stub.writeWorker()
 	return &stub
 }
 
@@ -55,11 +58,8 @@ func (ts *TunnelStub) SetSerializer(serizer *serializer.Serializer) {
 func (ts *TunnelStub) sendTinyFrame(frame *protocol.Frame) error {
 	// 序列化数据
 	binaryData := ts.serizer.Serialize(frame)
-	ts.wlock.Lock()
-	defer ts.wlock.Unlock()
 	// 发送数据
-	// 发送数据
-	//fmt.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
+	log.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
 	return ts.tsport.SendPacket(binaryData)
 }
 
@@ -75,24 +75,32 @@ func (ts *TunnelStub) sendFrame(frame *protocol.Frame) error {
 	return nil
 }
 
-func (ts *TunnelStub) closeStream(streamId string) error {
+func (ts *TunnelStub) closeStream(streamId string) {
 	ts.destroyStream(streamId)
-	rstFrame := protocol.Frame{Cid: streamId, Type: protocol.FIN_FRAME, Data: []byte{0x1, 0x1}}
-	err := ts.sendFrame(&rstFrame)
-	return err
+	rstFrame := &protocol.Frame{Cid: streamId, Type: protocol.FIN_FRAME, Data: []byte{0x1, 0x1}}
+	ts.sendch <- rstFrame
 }
 
 func (ts *TunnelStub) resetStream(streamId string) {
 	ts.destroyStream(streamId)
-	rstFrame := protocol.Frame{Cid: streamId, Type: protocol.RST_FRAME, Data: []byte{0x1, 0x2}}
-	err := ts.sendFrame(&rstFrame)
-	if err != nil {
-		fmt.Println("reset stream err:", err)
+	rstFrame := &protocol.Frame{Cid: streamId, Type: protocol.RST_FRAME, Data: []byte{0x1, 0x2}}
+	ts.sendch <- rstFrame
+}
+
+func (ts *TunnelStub) writeWorker() {
+	fmt.Println("writeWorker====")
+	for {
+		select {
+		case ref := <-ts.sendch:
+			ts.sendFrame(ref)
+		case <-ts.close:
+			return
+		}
 	}
 }
 
-func (ts *TunnelStub) Start() {
-	fmt.Println("ListenPacket====")
+func (ts *TunnelStub) readWorker() {
+	fmt.Println("readworker====")
 	defer func() {
 		ts.close <- 1
 	}()
@@ -109,21 +117,19 @@ func (ts *TunnelStub) Start() {
 			return
 		}
 
-		//fmt.Printf("read  tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.Cid, len(packet), respFrame.Type)
+		log.Printf("read  tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.Cid, len(packet), respFrame.Type)
 		if respFrame.Type == protocol.PING_FRAME {
 			timebs := toolbox.GetNowInt64Bytes()
 			data := append(respFrame.Data, timebs...)
-			pongFrame := protocol.Frame{Cid: respFrame.Cid, Type: protocol.PONG_FRAME, Data: data}
-			ts.sendFrame(&pongFrame)
+			pongFrame := &protocol.Frame{Cid: respFrame.Cid, Type: protocol.PONG_FRAME, Data: data}
+			ts.sendch <- pongFrame
 		} else if respFrame.Type == protocol.PONG_FRAME {
 			stByte := respFrame.Data[:13]
 			atByte := respFrame.Data[13:26]
 			nowst := time.Now().UnixNano() / 1e6
 			st, err1 := strconv.Atoi(string(stByte))
 			at, err2 := strconv.Atoi(string(atByte))
-
 			if err1 != nil || err2 != nil {
-				//cli.logger.Warn("invalid ping pong format")
 				continue
 			}
 			upms := int64((at)) - int64(st)
@@ -162,21 +168,17 @@ func (ts *TunnelStub) Start() {
 	}
 }
 
-func (ts *TunnelStub) InitStream(addr []byte) (*Stream, error) {
+func (ts *TunnelStub) InitStream(addr []byte) *Stream {
 	//fmt.Println("start stream===>")
 	streamId := utils.GetUUID()
 	stream := NewStream(streamId, addr)
 	ts.streams[streamId] = stream
-	initframe := protocol.Frame{Cid: streamId, Type: protocol.INIT_FRAME, Data: addr}
-	err := ts.sendFrame(&initframe)
-	if err != nil {
-		return nil, err
-	}
-	return stream, nil
+	ts.sendch <- &protocol.Frame{Cid: streamId, Type: protocol.INIT_FRAME, Data: addr}
+	return stream
 }
-func (ts *TunnelStub) SetReady(stream *Stream) error {
-	estframe := protocol.Frame{Cid: stream.Cid, Type: protocol.EST_FRAME, Data: stream.Addr}
-	return ts.sendFrame(&estframe)
+func (ts *TunnelStub) SetReady(stream *Stream) {
+	estframe := &protocol.Frame{Cid: stream.Cid, Type: protocol.EST_FRAME, Data: stream.Addr}
+	ts.sendch <- estframe
 }
 
 func (ts *TunnelStub) destroyStream(streamId string) {
@@ -187,11 +189,10 @@ func (ts *TunnelStub) destroyStream(streamId string) {
 	}
 }
 
-func (ts *TunnelStub) Ping() error {
+func (ts *TunnelStub) Ping() {
 	data := toolbox.GetNowInt64Bytes()
 	pingFrame := protocol.Frame{Cid: "00000000000000000000000000000000", Type: protocol.PING_FRAME, Data: data}
-	err := ts.sendFrame(&pingFrame)
-	return err
+	ts.sendch <- &pingFrame
 }
 
 func (ts *TunnelStub) Accept() (*Stream, error) {
@@ -216,13 +217,7 @@ func (ts *TunnelStub) ForwardToTunnel(stream *Stream) {
 			if !ok {
 				return
 			}
-			dataFrame := protocol.Frame{Cid: stream.Cid, Type: protocol.STREAM_FRAME, Data: data}
-			err := ts.sendFrame(&dataFrame)
-			if err != nil {
-				fmt.Println("f===", err.Error())
-				return
-			}
-
+			ts.sendch <- &protocol.Frame{Cid: stream.Cid, Type: protocol.STREAM_FRAME, Data: data}
 		case <-ts.close:
 			// close transport
 			return

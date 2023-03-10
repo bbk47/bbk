@@ -48,7 +48,7 @@ func NewClient(opts Option) Client {
 	return cli
 }
 
-func (cli *Client) setupwsConnection() error {
+func (cli *Client) setupwsConnection() {
 	tunOpts := cli.tunnelOps
 	cli.logger.Infof("creating %s tunnel\n", tunOpts.Protocol)
 	err := retry.Do(
@@ -66,20 +66,21 @@ func (cli *Client) setupwsConnection() error {
 		retry.Attempts(5),
 		retry.Delay(time.Second*5),
 	)
-
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 	cli.stubclient = transport.NewTunnelStub(cli.transport, cli.serizer)
 	cli.tunnelStatus = TUNNEL_OK
 	cli.logger.Infof("create tunnel success!\n")
-	go cli.stubclient.Start()
 	go cli.listenStream()
-	return nil
 }
 
 func (cli *Client) listenStream() {
 	for {
+		if cli.tunnelStatus != TUNNEL_OK {
+			cli.setupwsConnection()
+			continue
+		}
 		stream, err := cli.stubclient.Accept()
 		if err != nil {
 			// transport error
@@ -88,7 +89,14 @@ func (cli *Client) listenStream() {
 		}
 		browerobj := cli.browserProxy[stream.Cid]
 		if browerobj != nil {
-			browerobj.stream_ch <- stream
+			select {
+			case browerobj.stream_ch <- stream:
+			// send to proxy
+
+			case <-time.After(15 * time.Second):
+				cli.logger.Warnf("===timeout===!")
+				continue
+			}
 		}
 	}
 }
@@ -114,29 +122,22 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 			stream.Close()
 			delete(cli.browserProxy, stream.Cid)
 		}()
-		go transport.SocketPipe(socket, stream)
-		transport.SocketPipe(stream, socket)
+		go transport.SocketPipe(socket, stream) // socket pipe steream
+		transport.SocketPipe(stream, socket)    // stream pipe socket
 	case <-time.After(10 * time.Second):
 		cli.logger.Warnf("connect %s timeout 10000ms exceeded!", remoteaddr)
-	}
-}
-
-func (cli *Client) checkTunnel() {
-	if cli.tunnelStatus != TUNNEL_OK {
-		err := cli.setupwsConnection()
-		if err != nil {
-			log.Fatal(err)
-		}
 	}
 }
 
 func (cli *Client) serviceWorker() {
 	go func() {
 		for {
-			cli.checkTunnel()
+			if cli.tunnelStatus != TUNNEL_OK {
+				cli.setupwsConnection()
+			}
 			select {
 			case ref := <-cli.reqch:
-				st, _ := cli.stubclient.InitStream(ref.proxysocket.GetAddr())
+				st := cli.stubclient.InitStream(ref.proxysocket.GetAddr())
 				cli.browserProxy[st.Cid] = ref
 			}
 		}
