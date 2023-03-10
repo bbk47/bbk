@@ -52,31 +52,46 @@ func (ts *TunnelStub) SetSerializer(serizer *serializer.Serializer) {
 	ts.serizer = serizer
 }
 
-func (ts *TunnelStub) sendFrame(frame *protocol.Frame) error {
-	//fmt.Println("send frame:", frame)
+func (ts *TunnelStub) sendTinyFrame(frame *protocol.Frame) error {
 	// 序列化数据
 	binaryData := ts.serizer.Serialize(frame)
 	ts.wlock.Lock()
 	defer ts.wlock.Unlock()
 	// 发送数据
 	// 发送数据
-	//fmt.Println("write tunnel len:", len(binaryData), " frametype:", frame.Type)
+	//fmt.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
 	return ts.tsport.SendPacket(binaryData)
 }
 
-func (ts *TunnelStub) sendFinFrame(streamId string) error {
+func (ts *TunnelStub) sendFrame(frame *protocol.Frame) error {
+	//fmt.Println("send frame:", frame)
+	frames := protocol.FrameSegment(frame)
+	for _, smallframe := range frames {
+		err := ts.sendTinyFrame(smallframe)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ts *TunnelStub) closeStream(streamId string) error {
+	ts.destroyStream(streamId)
 	rstFrame := protocol.Frame{Cid: streamId, Type: protocol.FIN_FRAME, Data: []byte{0x1, 0x1}}
 	err := ts.sendFrame(&rstFrame)
 	return err
 }
 
-func (ts *TunnelStub) sendRstFrame(streamId string) error {
+func (ts *TunnelStub) resetStream(streamId string) {
+	ts.destroyStream(streamId)
 	rstFrame := protocol.Frame{Cid: streamId, Type: protocol.RST_FRAME, Data: []byte{0x1, 0x2}}
 	err := ts.sendFrame(&rstFrame)
-	return err
+	if err != nil {
+		fmt.Println("reset stream err:", err)
+	}
 }
 
-func (ts *TunnelStub) ListenPacket() {
+func (ts *TunnelStub) Start() {
 	fmt.Println("ListenPacket====")
 	defer func() {
 		ts.close <- 1
@@ -94,11 +109,11 @@ func (ts *TunnelStub) ListenPacket() {
 			return
 		}
 
-		//fmt.Printf("read tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.Cid, len(packet), respFrame.Type)
+		//fmt.Printf("read  tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.Cid, len(packet), respFrame.Type)
 		if respFrame.Type == protocol.PING_FRAME {
 			timebs := toolbox.GetNowInt64Bytes()
 			data := append(respFrame.Data, timebs...)
-			pongFrame := protocol.Frame{Cid: "00000000000000000000000000000000", Type: protocol.PONG_FRAME, Data: data}
+			pongFrame := protocol.Frame{Cid: respFrame.Cid, Type: protocol.PONG_FRAME, Data: data}
 			ts.sendFrame(&pongFrame)
 		} else if respFrame.Type == protocol.PONG_FRAME {
 			stByte := respFrame.Data[:13]
@@ -125,26 +140,21 @@ func (ts *TunnelStub) ListenPacket() {
 			// find stream , write stream
 			streamId := respFrame.Cid
 			stream := ts.streams[streamId]
-			if stream == nil {
+			if stream == nil || stream.isClose() {
+				ts.resetStream(streamId)
 				continue
 			}
-			//fmt.Println("stream frame==== Get", len(respFrame.Data))
-			//err := stream.produce(respFrame.Data) // data => stream => target socket
-			//if err != nil {
-			//	delete(ts.streams, streamId)
-			//}
 			stream.rbuf <- respFrame.Data
 		} else if respFrame.Type == protocol.FIN_FRAME {
-			streamId := respFrame.Cid
-			delete(ts.streams, streamId)
+			ts.destroyStream(respFrame.Cid)
 		} else if respFrame.Type == protocol.RST_FRAME {
 			//destory stream
-			streamId := respFrame.Cid
-			delete(ts.streams, streamId)
+			ts.destroyStream(respFrame.Cid)
 		} else if respFrame.Type == protocol.EST_FRAME {
 			streamId := respFrame.Cid
 			stream := ts.streams[streamId]
 			if stream == nil {
+				ts.resetStream(streamId)
 				continue
 			}
 			ts.streamch <- stream
@@ -152,7 +162,7 @@ func (ts *TunnelStub) ListenPacket() {
 	}
 }
 
-func (ts *TunnelStub) StartStream(addr []byte) (*Stream, error) {
+func (ts *TunnelStub) InitStream(addr []byte) (*Stream, error) {
 	//fmt.Println("start stream===>")
 	streamId := utils.GetUUID()
 	stream := NewStream(streamId, addr)
@@ -167,6 +177,14 @@ func (ts *TunnelStub) StartStream(addr []byte) (*Stream, error) {
 func (ts *TunnelStub) SetReady(stream *Stream) error {
 	estframe := protocol.Frame{Cid: stream.Cid, Type: protocol.EST_FRAME, Data: stream.Addr}
 	return ts.sendFrame(&estframe)
+}
+
+func (ts *TunnelStub) destroyStream(streamId string) {
+	stream := ts.streams[streamId]
+	if stream != nil {
+		stream.Close()
+		delete(ts.streams, streamId)
+	}
 }
 
 func (ts *TunnelStub) Ping() error {
@@ -190,6 +208,8 @@ func (ts *TunnelStub) Accept() (*Stream, error) {
 }
 
 func (ts *TunnelStub) ForwardToTunnel(stream *Stream) {
+	defer stream.Close()
+
 	for {
 		select {
 		case data, ok := <-stream.wbuf: // target write data=>stream=>transport

@@ -32,10 +32,14 @@ func (s *Stream) produce(data []byte) error {
 	return nil
 }
 
+func (s *Stream) isClose() bool {
+	return s.state == 2
+}
+
 func (s *Stream) Read(data []byte) (n int, err error) {
 	bts, ok := <-s.rbuf
 	if !ok {
-		return 0, errors.New("stream closed")
+		return 0, errors.New("rbuf closed")
 	}
 	n = copy(data, bts)
 	fmt.Println("read stream data:", n)
@@ -45,21 +49,21 @@ func (s *Stream) Read(data []byte) (n int, err error) {
 func (s *Stream) Write(p []byte) (n int, err error) {
 	//fmt.Println("write to stream===", len(p))
 	s.wbuf <- p
-	fmt.Println("write stream data:", len(p))
 	return len(p), nil
 }
 
 func (s *Stream) Close() error {
+	fmt.Println("closeing ch")
 	s.state = 2
-	close(s.wbuf)
-	close(s.rbuf)
+	//close(s.wbuf)
+	//close(s.rbuf)
 	return nil
 }
 
-func SocketPipe(src io.ReadCloser, dest io.WriteCloser) {
+func SocketPipe(src io.Reader, dest io.Writer) {
 	// func Copy(dst Writer, src Reader), src->pipe->dest
 	_, err := io.Copy(dest, src)
 	if err != nil {
-		fmt.Println("err:", err.Error())
+		fmt.Println("copy ==> err:", err.Error())
 	}
 }

@@ -8,17 +8,15 @@ import (
 	"fmt"
 	"github.com/avast/retry-go"
 	"github.com/bbk47/toolbox"
-	"io"
+	"log"
 	"net"
-	"sync"
 	"time"
 )
 
 type BrowserObj struct {
-	host        string
+	Cid         string
 	proxysocket proxy.ProxySocket
-	stream      *transport.Stream
-	start       chan uint8
+	stream_ch   chan *transport.Stream
 }
 
 type Client struct {
@@ -34,8 +32,6 @@ type Client struct {
 	transport    transport.Transport
 	lastPong     uint64
 	browserProxy map[string]*BrowserObj //线程共享变量
-	//tunlock          sync.Mutex
-	maplock sync.RWMutex
 }
 
 func NewClient(opts Option) Client {
@@ -44,7 +40,7 @@ func NewClient(opts Option) Client {
 	cli.opts = opts
 	cli.tunnelOps = opts.TunnelOpts
 	cli.browserProxy = make(map[string]*BrowserObj)
-	cli.reqch = make(chan *BrowserObj, 32)
+	cli.reqch = make(chan *BrowserObj, 1024)
 	// other
 	cli.tunnelStatus = TUNNEL_INIT
 	cli.lastPong = uint64(time.Now().UnixNano())
@@ -53,7 +49,6 @@ func NewClient(opts Option) Client {
 }
 
 func (cli *Client) setupwsConnection() error {
-	cli.logger.Infof("creating tunnel.")
 	tunOpts := cli.tunnelOps
 	cli.logger.Infof("creating %s tunnel\n", tunOpts.Protocol)
 	err := retry.Do(
@@ -78,32 +73,24 @@ func (cli *Client) setupwsConnection() error {
 	cli.stubclient = transport.NewTunnelStub(cli.transport, cli.serizer)
 	cli.tunnelStatus = TUNNEL_OK
 	cli.logger.Infof("create tunnel success!\n")
-	go func() {
-		for {
-			stream, err := cli.stubclient.Accept()
-			fmt.Println("get stream====>")
-			if err != nil {
-				// transport error
-				cli.tunnelStatus = TUNNEL_DISCONNECT
-				return
-			}
-			cli.handleStream(stream)
-		}
-	}()
-	go cli.stubclient.ListenPacket()
-
+	go cli.stubclient.Start()
+	go cli.listenStream()
 	return nil
 }
 
-func (cli *Client) handleStream(stream *transport.Stream) {
-
-	browerobj := cli.browserProxy[stream.Cid]
-	if browerobj == nil {
-		return
+func (cli *Client) listenStream() {
+	for {
+		stream, err := cli.stubclient.Accept()
+		if err != nil {
+			// transport error
+			cli.tunnelStatus = TUNNEL_DISCONNECT
+			return
+		}
+		browerobj := cli.browserProxy[stream.Cid]
+		if browerobj != nil {
+			browerobj.stream_ch <- stream
+		}
 	}
-	cli.logger.Infof("stream %s create success\n", browerobj.host)
-	browerobj.stream = stream
-	browerobj.start <- 1
 }
 
 func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
@@ -117,49 +104,39 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	remoteaddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
 	cli.logger.Infof("COMMAND===%s\n", remoteaddr)
 
-	newbrowserobj := &BrowserObj{proxysocket: socket, start: make(chan uint8), host: remoteaddr}
-	cli.reqch <- newbrowserobj
-
-	defer func() {
-		if newbrowserobj.stream != nil {
-			newbrowserobj.stream.Close()
-		}
-	}()
+	browserobj := &BrowserObj{proxysocket: socket, stream_ch: make(chan *transport.Stream)}
+	cli.reqch <- browserobj
 
 	select {
-	case <-newbrowserobj.start: // 收到信号才开始读
-		//go transport.SocketPipe(socket, newbrowserobj.stream)
-		//go transport.SocketPipe(newbrowserobj.stream, socket)
-		go func() {
-			_, err := io.Copy(newbrowserobj.stream, socket)
-			if err != nil {
-				fmt.Println("111 time:", time.Now().UnixNano(), " =", err)
-			}
+	case stream := <-browserobj.stream_ch: // 收到信号才开始读
+		cli.logger.Infof("stream %s create success\n", remoteaddr)
+		defer func() {
+			stream.Close()
+			delete(cli.browserProxy, stream.Cid)
 		}()
-		_, err = io.Copy(socket, newbrowserobj.stream)
-		if err != nil {
-			fmt.Println("222 time:", time.Now().UnixNano(), " =", err)
-		}
+		go transport.SocketPipe(socket, stream)
+		transport.SocketPipe(stream, socket)
 	case <-time.After(10 * time.Second):
 		cli.logger.Warnf("connect %s timeout 10000ms exceeded!", remoteaddr)
+	}
+}
+
+func (cli *Client) checkTunnel() {
+	if cli.tunnelStatus != TUNNEL_OK {
+		err := cli.setupwsConnection()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
 func (cli *Client) serviceWorker() {
 	go func() {
 		for {
-			//fmt.Println("check====request===")
-			if cli.tunnelStatus != TUNNEL_OK {
-				err := cli.setupwsConnection()
-				if err != nil {
-					fmt.Println(err)
-				}
-			}
-
+			cli.checkTunnel()
 			select {
 			case ref := <-cli.reqch:
-				cli.logger.Infof("start stream for =====>%s\n", ref.host)
-				st, _ := cli.stubclient.StartStream(ref.proxysocket.GetAddr())
+				st, _ := cli.stubclient.InitStream(ref.proxysocket.GetAddr())
 				cli.browserProxy[st.Cid] = ref
 			}
 		}
@@ -167,10 +144,9 @@ func (cli *Client) serviceWorker() {
 }
 func (cli *Client) keepPingWs() {
 	go func() {
-		ticker := time.Tick(time.Second * 30)
+		ticker := time.Tick(time.Second * 15)
 		for range ticker {
 			if cli.stubclient != nil {
-				//fmt.Println("ping===>")
 				cli.stubclient.Ping()
 			}
 		}

@@ -7,10 +7,8 @@ import (
 	"bbk/src/utils"
 	"fmt"
 	"github.com/bbk47/toolbox"
-	"io"
 	"net"
 	"sync"
-	"time"
 )
 
 type ConnectObj struct {
@@ -59,7 +57,7 @@ func (servss *Server) handleConnection(tunnel *server.TunnelConn) {
 	fmt.Println("handle connection===")
 	tsport := transport.WrapTunnel(tunnel)
 	serverStub := transport.NewTunnelStub(tsport, servss.serizer)
-	go serverStub.ListenPacket()
+	go serverStub.Start()
 	go func() {
 		for {
 			stream, err := serverStub.Accept()
@@ -73,6 +71,8 @@ func (servss *Server) handleConnection(tunnel *server.TunnelConn) {
 }
 
 func (servss *Server) handleStream(stub *transport.TunnelStub, stream *transport.Stream) {
+	defer stream.Close()
+
 	addrInfo, err := toolbox.ParseAddrInfo(stream.Addr)
 	servss.logger.Infof("REQ CONNECT=>%s:%d\n", addrInfo.Addr, addrInfo.Port)
 	remoteAddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
@@ -81,22 +81,11 @@ func (servss *Server) handleStream(stub *transport.TunnelStub, stream *transport
 	if err != nil {
 		return
 	}
+	defer tsocket.Close()
 	servss.logger.Infof("dial success===>%s:%d\n", addrInfo.Addr, addrInfo.Port)
-	stub.SetReady(stream)
-	defer func() {
-		tsocket.Close()
-		stream.Close()
-	}()
-	go func() {
-		_, err := io.Copy(tsocket, stream)
-		if err != nil {
-			fmt.Println("111 time:", time.Now().UnixNano(), " =", err)
-		}
-	}()
-	_, err = io.Copy(stream, tsocket)
-	if err != nil {
-		fmt.Println("222 time:", time.Now().UnixNano(), " =", err)
-	}
+	err = stub.SetReady(stream)
+	go transport.SocketPipe(stream, tsocket)
+	transport.SocketPipe(tsocket, stream)
 }
 
 func (servss *Server) checkServerOk(srv server.FrameServer, err error) {
