@@ -81,12 +81,15 @@ func (cli *Client) listenStream() {
 			cli.setupwsConnection()
 			continue
 		}
+		fmt.Println("=====>check stream")
 		stream, err := cli.stubclient.Accept()
+
 		if err != nil {
 			// transport error
 			cli.tunnelStatus = TUNNEL_DISCONNECT
 			return
 		}
+		fmt.Println("=====>get stream")
 		browerobj := cli.browserProxy[stream.Cid]
 		if browerobj != nil {
 			select {
@@ -119,7 +122,7 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	case stream := <-browserobj.stream_ch: // 收到信号才开始读
 		cli.logger.Infof("stream %s create success\n", remoteaddr)
 		defer func() {
-			stream.Close()
+			//stream.Close()
 			delete(cli.browserProxy, stream.Cid)
 		}()
 		go transport.SocketPipe(socket, stream) // socket pipe steream

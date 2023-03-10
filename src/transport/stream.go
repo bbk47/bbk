@@ -11,26 +11,35 @@ type Stream struct {
 	Addr  []byte
 	wbuf  chan []byte
 	rbuf  chan []byte
+	buff  []byte
+	ts    *TunnelStub
 	state uint8
 }
 
-func NewStream(cid string, addr []byte) *Stream {
+func NewStream(cid string, addr []byte, ts *TunnelStub) *Stream {
 	s := &Stream{}
 	s.Cid = cid
 	s.Addr = addr
+	s.ts = ts
 	s.wbuf = make(chan []byte)
 	s.rbuf = make(chan []byte)
+	//s.buff =make([]byte 1024*8)
 	s.state = 0
+	//s.
 	return s
 }
 
-func (s *Stream) produce(data []byte) error {
-	//if s.state == 2 {
-	//	return errors.New("stream closed")
-	//}
-	s.rbuf <- data
-	return nil
-}
+//func (s *Stream) receiver() {
+//	for {
+//		select {
+//		case data, ok := <-s.rbuf: // target write data=>stream=>transport
+//			if !ok {
+//				return
+//			}
+//
+//		}
+//	}
+//}
 
 func (s *Stream) isClose() bool {
 	return s.state == 2
@@ -41,17 +50,19 @@ func (s *Stream) Read(data []byte) (n int, err error) {
 	if !ok {
 		return 0, io.EOF
 	}
+	if len(bts) > len(data) {
+		log.Fatalln("overflow read from rbuf====>")
+	}
 	n = copy(data, bts)
-	log.Println("browser read stream data:", n)
+	log.Println("browser read stream data:", n, "bts len:", len(bts))
 	return n, nil
 }
 
 func (s *Stream) Write(p []byte) (n int, err error) {
-	log.Println("write to stream===", len(p))
 	if s.state == 2 {
 		return 0, errors.New("cannot write, stream closed")
 	}
-	s.wbuf <- p
+	s.ts.sendDataFrame(s.Cid, p)
 	return len(p), nil
 }
 

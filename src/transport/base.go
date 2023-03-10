@@ -10,6 +10,7 @@ import (
 	"github.com/bbk47/toolbox"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -39,11 +40,12 @@ type TunnelStub struct {
 	sendch   chan *protocol.Frame
 	close    chan uint8
 	streams  map[string]*Stream
+	wlock    sync.Mutex
 }
 
 func NewTunnelStub(tsport Transport, serizer *serializer.Serializer) *TunnelStub {
 	stub := TunnelStub{tsport: tsport, serizer: serizer}
-	stub.streamch = make(chan *Stream, 256)
+	stub.streamch = make(chan *Stream, 1024)
 	stub.sendch = make(chan *protocol.Frame, 1024)
 	stub.streams = make(map[string]*Stream)
 	go stub.readWorker()
@@ -58,9 +60,17 @@ func (ts *TunnelStub) SetSerializer(serizer *serializer.Serializer) {
 func (ts *TunnelStub) sendTinyFrame(frame *protocol.Frame) error {
 	// 序列化数据
 	binaryData := ts.serizer.Serialize(frame)
+	ts.wlock.Lock()
+
+	defer ts.wlock.Unlock()
 	// 发送数据
 	log.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
 	return ts.tsport.SendPacket(binaryData)
+}
+
+func (ts *TunnelStub) sendDataFrame(streamId string, data []byte) {
+	frame := &protocol.Frame{Cid: streamId, Type: protocol.STREAM_FRAME, Data: data}
+	ts.sendch <- frame
 }
 
 func (ts *TunnelStub) sendFrame(frame *protocol.Frame) error {
@@ -77,14 +87,14 @@ func (ts *TunnelStub) sendFrame(frame *protocol.Frame) error {
 
 func (ts *TunnelStub) closeStream(streamId string) {
 	ts.destroyStream(streamId)
-	rstFrame := &protocol.Frame{Cid: streamId, Type: protocol.FIN_FRAME, Data: []byte{0x1, 0x1}}
-	ts.sendch <- rstFrame
+	frame := &protocol.Frame{Cid: streamId, Type: protocol.FIN_FRAME, Data: []byte{0x1, 0x1}}
+	ts.sendch <- frame
 }
 
 func (ts *TunnelStub) resetStream(streamId string) {
 	ts.destroyStream(streamId)
-	rstFrame := &protocol.Frame{Cid: streamId, Type: protocol.RST_FRAME, Data: []byte{0x1, 0x2}}
-	ts.sendch <- rstFrame
+	frame := &protocol.Frame{Cid: streamId, Type: protocol.RST_FRAME, Data: []byte{0x1, 0x2}}
+	ts.sendch <- frame
 }
 
 func (ts *TunnelStub) writeWorker() {
@@ -139,7 +149,7 @@ func (ts *TunnelStub) readWorker() {
 		} else if respFrame.Type == protocol.INIT_FRAME {
 			//fmt.Println("init stream ====")
 			// create stream for server
-			st := NewStream(respFrame.Cid, respFrame.Data)
+			st := NewStream(respFrame.Cid, respFrame.Data, ts)
 			ts.streams[st.Cid] = st
 			ts.streamch <- st
 		} else if respFrame.Type == protocol.STREAM_FRAME {
@@ -171,14 +181,15 @@ func (ts *TunnelStub) readWorker() {
 func (ts *TunnelStub) InitStream(addr []byte) *Stream {
 	//fmt.Println("start stream===>")
 	streamId := utils.GetUUID()
-	stream := NewStream(streamId, addr)
+	stream := NewStream(streamId, addr, ts)
 	ts.streams[streamId] = stream
-	ts.sendch <- &protocol.Frame{Cid: streamId, Type: protocol.INIT_FRAME, Data: addr}
+	frame := &protocol.Frame{Cid: streamId, Type: protocol.INIT_FRAME, Data: addr}
+	ts.sendch <- frame
 	return stream
 }
 func (ts *TunnelStub) SetReady(stream *Stream) {
-	estframe := &protocol.Frame{Cid: stream.Cid, Type: protocol.EST_FRAME, Data: stream.Addr}
-	ts.sendch <- estframe
+	frame := &protocol.Frame{Cid: stream.Cid, Type: protocol.EST_FRAME, Data: stream.Addr}
+	ts.sendch <- frame
 }
 
 func (ts *TunnelStub) destroyStream(streamId string) {
@@ -191,8 +202,8 @@ func (ts *TunnelStub) destroyStream(streamId string) {
 
 func (ts *TunnelStub) Ping() {
 	data := toolbox.GetNowInt64Bytes()
-	pingFrame := protocol.Frame{Cid: "00000000000000000000000000000000", Type: protocol.PING_FRAME, Data: data}
-	ts.sendch <- &pingFrame
+	frame := &protocol.Frame{Cid: "00000000000000000000000000000000", Type: protocol.PING_FRAME, Data: data}
+	ts.sendch <- frame
 }
 
 func (ts *TunnelStub) Accept() (*Stream, error) {
@@ -200,27 +211,9 @@ func (ts *TunnelStub) Accept() (*Stream, error) {
 
 	select {
 	case st := <-ts.streamch: // 收到stream
-		go ts.ForwardToTunnel(st)
 		return st, nil
 	case <-ts.close:
 		// close transport
 		return nil, errors.New("transport closed")
-	}
-}
-
-func (ts *TunnelStub) ForwardToTunnel(stream *Stream) {
-	defer stream.Close()
-
-	for {
-		select {
-		case data, ok := <-stream.wbuf: // target write data=>stream=>transport
-			if !ok {
-				return
-			}
-			ts.sendch <- &protocol.Frame{Cid: stream.Cid, Type: protocol.STREAM_FRAME, Data: data}
-		case <-ts.close:
-			// close transport
-			return
-		}
 	}
 }
