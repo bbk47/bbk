@@ -1,19 +1,17 @@
 package transport
 
 import (
-	"errors"
 	"io"
 	"log"
+	"sync"
 )
 
 type Stream struct {
-	Cid   string
-	Addr  []byte
-	wbuf  chan []byte
-	rbuf  chan []byte
-	buff  []byte
-	ts    *TunnelStub
-	state uint8
+	Cid  string
+	Addr []byte
+	ts   *TunnelStub
+	rp   *io.PipeReader
+	wp   *io.PipeWriter
 }
 
 func NewStream(cid string, addr []byte, ts *TunnelStub) *Stream {
@@ -21,66 +19,58 @@ func NewStream(cid string, addr []byte, ts *TunnelStub) *Stream {
 	s.Cid = cid
 	s.Addr = addr
 	s.ts = ts
-	s.wbuf = make(chan []byte)
-	s.rbuf = make(chan []byte)
-	//s.buff =make([]byte 1024*8)
-	s.state = 0
-	//s.
+	rp, wp := io.Pipe()
+	s.rp = rp
+	s.wp = wp
 	return s
 }
 
-//func (s *Stream) receiver() {
-//	for {
-//		select {
-//		case data, ok := <-s.rbuf: // target write data=>stream=>transport
-//			if !ok {
-//				return
-//			}
-//
-//		}
-//	}
-//}
+func (s *Stream) produce(data []byte) error {
+	//fmt.Printf("produce wp====:%x\n", data)
+	_, err := s.wp.Write(data)
+	//fmt.Println("produce has err:", err != nil, "write count:", n)
 
-func (s *Stream) isClose() bool {
-	return s.state == 2
+	return err
 }
 
 func (s *Stream) Read(data []byte) (n int, err error) {
-	bts, ok := <-s.rbuf
-	if !ok {
-		return 0, io.EOF
-	}
-	if len(bts) > len(data) {
-		log.Fatalln("overflow read from rbuf====>")
-	}
-	n = copy(data, bts)
-	log.Println("browser read stream data:", n, "bts len:", len(bts))
-	return n, nil
+	n, err = s.rp.Read(data)
+	//fmt.Printf("target read====:%x  len:%d\n", data[:n], n)
+	return n, err
 }
 
 func (s *Stream) Write(p []byte) (n int, err error) {
-	if s.state == 2 {
-		return 0, errors.New("cannot write, stream closed")
-	}
-	s.ts.sendDataFrame(s.Cid, p)
+	//fmt.Printf("write stream[%s] data:%x\n", s.Cid, p)
+	buf2 := make([]byte, len(p))
+	copy(buf2, p) // io.Copy buf must copy data
+	s.ts.sendDataFrame(s.Cid, buf2)
 	return len(p), nil
 }
 
 func (s *Stream) Close() error {
 	log.Println("closeing ch")
-	if s.state == 2 {
-		return nil
-	}
-	s.state = 2
-	close(s.wbuf)
-	close(s.rbuf)
+	s.rp.Close()
+	s.wp.Close()
 	return nil
 }
 
-func SocketPipe(src io.Reader, dest io.Writer) {
-	// func Copy(dst Writer, src Reader), src->pipe->dest
-	_, err := io.Copy(dest, src)
+func Relay(left, right io.ReadWriteCloser) error {
+	var err, err1 error
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err1 = io.Copy(right, left)
+	}()
+	_, err = io.Copy(left, right)
+	wg.Wait()
+
 	if err != nil {
-		log.Println("copy ==> err:", err.Error())
+		return err
 	}
+
+	if err1 != nil {
+		return err1
+	}
+	return nil
 }

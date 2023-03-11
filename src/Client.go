@@ -77,19 +77,14 @@ func (cli *Client) setupwsConnection() {
 
 func (cli *Client) listenStream() {
 	for {
-		if cli.tunnelStatus != TUNNEL_OK {
-			cli.setupwsConnection()
-			continue
-		}
-		fmt.Println("=====>check stream")
+		fmt.Println("=====>check stream=====")
 		stream, err := cli.stubclient.Accept()
-
 		if err != nil {
 			// transport error
 			cli.tunnelStatus = TUNNEL_DISCONNECT
 			return
 		}
-		fmt.Println("=====>get stream")
+		//fmt.Println("=====>get stream")
 		browerobj := cli.browserProxy[stream.Cid]
 		if browerobj != nil {
 			select {
@@ -122,11 +117,10 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	case stream := <-browserobj.stream_ch: // 收到信号才开始读
 		cli.logger.Infof("stream %s create success\n", remoteaddr)
 		defer func() {
-			//stream.Close()
+			stream.Close()
 			delete(cli.browserProxy, stream.Cid)
 		}()
-		go transport.SocketPipe(socket, stream) // socket pipe steream
-		transport.SocketPipe(stream, socket)    // stream pipe socket
+		transport.Relay(socket, stream)
 	case <-time.After(10 * time.Second):
 		cli.logger.Warnf("connect %s timeout 10000ms exceeded!", remoteaddr)
 	}
@@ -151,7 +145,7 @@ func (cli *Client) keepPingWs() {
 		ticker := time.Tick(time.Second * 15)
 		for range ticker {
 			if cli.stubclient != nil {
-				cli.stubclient.Ping()
+				//cli.stubclient.Ping()
 			}
 		}
 	}()

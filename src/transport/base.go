@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bbk47/toolbox"
-	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -60,11 +59,10 @@ func (ts *TunnelStub) SetSerializer(serizer *serializer.Serializer) {
 func (ts *TunnelStub) sendTinyFrame(frame *protocol.Frame) error {
 	// 序列化数据
 	binaryData := ts.serizer.Serialize(frame)
-	ts.wlock.Lock()
-
-	defer ts.wlock.Unlock()
+	//ts.wlock.Lock()
+	//defer ts.wlock.Unlock()
 	// 发送数据
-	log.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
+	//log.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
 	return ts.tsport.SendPacket(binaryData)
 }
 
@@ -74,15 +72,14 @@ func (ts *TunnelStub) sendDataFrame(streamId string, data []byte) {
 }
 
 func (ts *TunnelStub) sendFrame(frame *protocol.Frame) error {
-	//fmt.Println("send frame:", frame)
-	frames := protocol.FrameSegment(frame)
-	for _, smallframe := range frames {
-		err := ts.sendTinyFrame(smallframe)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	//fmt.Printf("send[%s] len:[%d] type:%d tunnel:%x\n", frame.Cid, len(frame.Data), frame.Type, frame.Data)
+	binaryData := ts.serizer.Serialize(frame)
+	//ts.wlock.Lock()
+	//defer ts.wlock.Unlock()
+	// 发送数据
+	//log.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
+	return ts.tsport.SendPacket(binaryData)
+	//return nil
 }
 
 func (ts *TunnelStub) closeStream(streamId string) {
@@ -116,6 +113,7 @@ func (ts *TunnelStub) readWorker() {
 	}()
 	for {
 		packet, err := ts.tsport.ReadPacket()
+		//fmt.Printf("receive====:%x\n", packet)
 		//fmt.Printf("transport read data:len:%d\n", len(packet))
 		if err != nil {
 			fmt.Println("transport read packet err;", err.Error())
@@ -127,7 +125,7 @@ func (ts *TunnelStub) readWorker() {
 			return
 		}
 
-		log.Printf("read  tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.Cid, len(packet), respFrame.Type)
+		//log.Printf("read  tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.Cid, len(packet), respFrame.Type)
 		if respFrame.Type == protocol.PING_FRAME {
 			timebs := toolbox.GetNowInt64Bytes()
 			data := append(respFrame.Data, timebs...)
@@ -156,11 +154,16 @@ func (ts *TunnelStub) readWorker() {
 			// find stream , write stream
 			streamId := respFrame.Cid
 			stream := ts.streams[streamId]
-			if stream == nil || stream.isClose() {
+			if stream == nil {
 				ts.resetStream(streamId)
 				continue
 			}
-			stream.rbuf <- respFrame.Data
+			err := stream.produce(respFrame.Data)
+			//fmt.Println("produce okok")
+			if err != nil {
+				fmt.Println(err)
+				ts.closeStream(streamId)
+			}
 		} else if respFrame.Type == protocol.FIN_FRAME {
 			ts.destroyStream(respFrame.Cid)
 		} else if respFrame.Type == protocol.RST_FRAME {
@@ -174,6 +177,8 @@ func (ts *TunnelStub) readWorker() {
 				continue
 			}
 			ts.streamch <- stream
+		} else {
+			fmt.Println("eception frame type:", respFrame.Type)
 		}
 	}
 }

@@ -81,10 +81,12 @@ func (servss *Server) handleStream(stub *transport.TunnelStub, stream *transport
 		return
 	}
 	defer tsocket.Close()
-	servss.logger.Infof("dial success===>%s:%d\n", addrInfo.Addr, addrInfo.Port)
+	servss.logger.Infof("dial success=111==>%s:%d\n", addrInfo.Addr, addrInfo.Port)
 	stub.SetReady(stream)
-	go transport.SocketPipe(stream, tsocket)
-	transport.SocketPipe(tsocket, stream)
+	err = transport.Relay(tsocket, stream)
+	if err != nil {
+		servss.logger.Errorf("stream err:%s\n", err.Error())
+	}
 }
 
 func (servss *Server) checkServerOk(srv server.FrameServer, err error) {
