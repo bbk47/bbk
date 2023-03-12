@@ -3,6 +3,7 @@ package bbk
 import (
 	"bbk/src/proxy"
 	"bbk/src/serializer"
+	"bbk/src/stub"
 	"bbk/src/transport"
 	"bbk/src/utils"
 	"fmt"
@@ -16,7 +17,7 @@ import (
 type BrowserObj struct {
 	Cid         string
 	proxysocket proxy.ProxySocket
-	stream_ch   chan *transport.Stream
+	stream_ch   chan *stub.Stream
 }
 
 type Client struct {
@@ -28,7 +29,7 @@ type Client struct {
 	// inner attr
 	retryCount   uint8
 	tunnelStatus uint8
-	stubclient   *transport.TunnelStub
+	stubclient   *stub.TunnelStub
 	transport    transport.Transport
 	lastPong     uint64
 	browserProxy map[string]*BrowserObj //线程共享变量
@@ -69,7 +70,10 @@ func (cli *Client) setupwsConnection() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cli.stubclient = transport.NewTunnelStub(cli.transport, cli.serizer)
+	cli.stubclient = stub.NewTunnelStub(cli.transport, cli.serizer)
+	cli.stubclient.NotifyPong(func(up, down int64) {
+		cli.logger.Infof("tunnel health！ up:%dms, down:%dms, rtt:%dms\n", up, down, up+down)
+	})
 	cli.tunnelStatus = TUNNEL_OK
 	cli.logger.Infof("create tunnel success!\n")
 	go cli.listenStream()
@@ -77,7 +81,6 @@ func (cli *Client) setupwsConnection() {
 
 func (cli *Client) listenStream() {
 	for {
-		fmt.Println("=====>check stream=====")
 		stream, err := cli.stubclient.Accept()
 		if err != nil {
 			// transport error
@@ -110,19 +113,19 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	remoteaddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
 	cli.logger.Infof("COMMAND===%s\n", remoteaddr)
 
-	browserobj := &BrowserObj{proxysocket: socket, stream_ch: make(chan *transport.Stream)}
+	browserobj := &BrowserObj{proxysocket: socket, stream_ch: make(chan *stub.Stream)}
 	cli.reqch <- browserobj
 
 	select {
 	case stream := <-browserobj.stream_ch: // 收到信号才开始读
-		cli.logger.Infof("stream %s create success\n", remoteaddr)
+		cli.logger.Infof("EST success:%s \n", remoteaddr)
 		defer func() {
 			stream.Close()
 			delete(cli.browserProxy, stream.Cid)
 		}()
-		transport.Relay(socket, stream)
-	case <-time.After(10 * time.Second):
-		cli.logger.Warnf("connect %s timeout 10000ms exceeded!", remoteaddr)
+		stub.Relay(socket, stream)
+	case <-time.After(15 * time.Second):
+		cli.logger.Warnf("connect %s timeout 15000ms exceeded!", remoteaddr)
 	}
 }
 
@@ -134,7 +137,7 @@ func (cli *Client) serviceWorker() {
 			}
 			select {
 			case ref := <-cli.reqch:
-				st := cli.stubclient.InitStream(ref.proxysocket.GetAddr())
+				st := cli.stubclient.StartStream(ref.proxysocket.GetAddr())
 				cli.browserProxy[st.Cid] = ref
 			}
 		}
@@ -145,7 +148,7 @@ func (cli *Client) keepPingWs() {
 		ticker := time.Tick(time.Second * 15)
 		for range ticker {
 			if cli.stubclient != nil {
-				//cli.stubclient.Ping()
+				cli.stubclient.Ping()
 			}
 		}
 	}()

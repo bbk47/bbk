@@ -3,87 +3,58 @@ package bbk
 import (
 	"bbk/src/serializer"
 	"bbk/src/server"
+	"bbk/src/stub"
 	"bbk/src/transport"
 	"bbk/src/utils"
 	"fmt"
 	"github.com/bbk47/toolbox"
 	"net"
-	"sync"
 )
-
-type ConnectObj struct {
-	Id       string `json:"id"`
-	ctype    string
-	tconn    *server.TunnelConn
-	Mode     string `json:"mode"`
-	Delay    int    `json:"delay"`
-	Seed     string `json:"seed"`
-	RemoteId string `json:"remoteId"`
-	wlock    sync.Mutex
-}
-
-type Target struct {
-	cid       string
-	dataCache chan []byte
-	closed    chan uint8
-	status    string
-	socket    net.Conn
-}
 
 type Server struct {
 	opts    Option
 	logger  *toolbox.Logger
 	serizer *serializer.Serializer
-
-	connMap   sync.Map
-	targetMap sync.Map
-
-	targetDict map[string]*Target
-	wsLock     sync.Mutex
-	tsLock     sync.Mutex
-	mpLock     sync.Mutex
 }
 
 func NewServer(opt Option) Server {
 	s := Server{}
 	s.opts = opt
-	s.targetDict = make(map[string]*Target)
 
 	s.logger = utils.NewLogger("S", opt.LogLevel)
 	return s
 }
 
 func (servss *Server) handleConnection(tunnel *server.TunnelConn) {
-	fmt.Println("handle connection===")
 	tsport := transport.WrapTunnel(tunnel)
-	serverStub := transport.NewTunnelStub(tsport, servss.serizer)
+	serverStub := stub.NewTunnelStub(tsport, servss.serizer)
 	go func() {
 		for {
 			stream, err := serverStub.Accept()
 			if err != nil {
 				// transport error
-				continue
+				servss.logger.Errorf("stream accept err:%s\n", err.Error())
+				return
 			}
 			go servss.handleStream(serverStub, stream)
 		}
 	}()
 }
 
-func (servss *Server) handleStream(stub *transport.TunnelStub, stream *transport.Stream) {
+func (servss *Server) handleStream(serstub *stub.TunnelStub, stream *stub.Stream) {
 	defer stream.Close()
 
 	addrInfo, err := toolbox.ParseAddrInfo(stream.Addr)
-	servss.logger.Infof("REQ CONNECT=>%s:%d\n", addrInfo.Addr, addrInfo.Port)
 	remoteAddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
-	//destAddrPort := fmt.Sprintf("%s:%d", addr, port)
+	servss.logger.Infof("REQ CONNECT=>%s\n", remoteAddr)
 	tsocket, err := net.Dial("tcp", remoteAddr)
 	if err != nil {
 		return
 	}
 	defer tsocket.Close()
-	servss.logger.Infof("dial success=111==>%s:%d\n", addrInfo.Addr, addrInfo.Port)
-	stub.SetReady(stream)
-	err = transport.Relay(tsocket, stream)
+	servss.logger.Infof("DIAL SUCCESS==>%s\n", remoteAddr)
+	serstub.SetReady(stream)
+	err = stub.Relay(tsocket, stream)
 	if err != nil {
 		servss.logger.Errorf("stream err:%s\n", err.Error())
 	}

@@ -1,8 +1,7 @@
-package transport
+package stub
 
 import (
 	"io"
-	"log"
 	"sync"
 )
 
@@ -28,8 +27,6 @@ func NewStream(cid string, addr []byte, ts *TunnelStub) *Stream {
 func (s *Stream) produce(data []byte) error {
 	//fmt.Printf("produce wp====:%x\n", data)
 	_, err := s.wp.Write(data)
-	//fmt.Println("produce has err:", err != nil, "write count:", n)
-
 	return err
 }
 
@@ -48,7 +45,7 @@ func (s *Stream) Write(p []byte) (n int, err error) {
 }
 
 func (s *Stream) Close() error {
-	log.Println("closeing ch")
+	//log.Println("closeing ch")
 	s.rp.Close()
 	s.wp.Close()
 	return nil
