@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -28,20 +27,6 @@ func (ts *TcpTransport) ReadPacket() ([]byte, error) {
 	}
 	leng := int(lenbuf[0])*256 + int(lenbuf[1])
 	databuf := make([]byte, leng)
-	_, err = ts.conn.Read(databuf)
-	if err != nil {
-		return nil, err
-	}
-	return databuf, nil
-}
-func (ts *TcpTransport) ReadFirstPacket() ([]byte, error) {
-	// 接收数据
-	lenbuf := make([]byte, 2)
-	_, err := ts.conn.Read(lenbuf)
-	if lenbuf[1] != 0x27 {
-		return nil, errors.New("frist frame invalid, protocol error!")
-	}
-	databuf := make([]byte, 39)
 	_, err = ts.conn.Read(databuf)
 	if err != nil {
 		return nil, err
