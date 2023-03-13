@@ -72,21 +72,6 @@ func (ts *Http2Transport) ReadPacket() ([]byte, error) {
 	return databuf, nil
 }
 
-func (ts *Http2Transport) ReadFirstPacket() ([]byte, error) {
-	// 接收数据
-	lenbuf := make([]byte, 2)
-	_, err := ts.h2socket.Read(lenbuf)
-	if lenbuf[1] != 0x27 {
-		return nil, errors.New("frist frame invalid, protocol error!")
-	}
-	databuf := make([]byte, 39)
-	_, err = ts.h2socket.Read(databuf)
-	if err != nil {
-		return nil, err
-	}
-	return databuf, nil
-}
-
 func NewHttp2Transport(host, port, path string) (transport *Http2Transport, err error) {
 	http2Url := fmt.Sprintf("https://%s:%s%s", host, port, path)
 	tlsOpts := &tls.Config{

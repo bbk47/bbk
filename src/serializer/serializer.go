@@ -1,8 +1,8 @@
 package serializer
 
 import (
-	"bbk/src/protocol"
 	"fmt"
+	"gitee.com/bbk47/bbk/src/protocol"
 	"github.com/bbk47/toolbox"
 )
 

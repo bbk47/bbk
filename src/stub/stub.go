@@ -1,12 +1,12 @@
 package stub
 
 import (
-	"bbk/src/protocol"
-	"bbk/src/serializer"
-	"bbk/src/transport"
-	"bbk/src/utils"
 	"errors"
 	"fmt"
+	"gitee.com/bbk47/bbk/src/protocol"
+	"gitee.com/bbk47/bbk/src/serializer"
+	"gitee.com/bbk47/bbk/src/transport"
+	"gitee.com/bbk47/bbk/src/utils"
 	"github.com/bbk47/toolbox"
 	"strconv"
 	"time"

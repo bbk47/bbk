@@ -1,4 +1,4 @@
-module bbk
+module gitee.com/bbk47/bbk
 
 go 1.15
 

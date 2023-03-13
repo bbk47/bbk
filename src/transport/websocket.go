@@ -22,11 +22,6 @@ func (wst *WebsocketTransport) ReadPacket() ([]byte, error) {
 	return packet, err
 }
 
-func (wst *WebsocketTransport) ReadFirstPacket() ([]byte, error) {
-	_, packet, err := wst.conn.ReadMessage()
-	return packet, err
-}
-
 func NewWebsocketTransport(host, port, path string, secure bool) (transport *WebsocketTransport, err error) {
 	wsUrl := ""
 	if secure {
@@ -34,6 +29,7 @@ func NewWebsocketTransport(host, port, path string, secure bool) (transport *Web
 	} else {
 		wsUrl = fmt.Sprintf("ws://%s:%s%s", host, port, path)
 	}
+	fmt.Println("transport wsurl:" + wsUrl)
 	ws, _, err := websocket.DefaultDialer.Dial(wsUrl, nil)
 	if err != nil {
 		// send error event

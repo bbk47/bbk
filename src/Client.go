@@ -1,12 +1,12 @@
 package bbk
 
 import (
-	"bbk/src/proxy"
-	"bbk/src/serializer"
-	"bbk/src/stub"
-	"bbk/src/transport"
-	"bbk/src/utils"
 	"fmt"
+	"gitee.com/bbk47/bbk/src/proxy"
+	"gitee.com/bbk47/bbk/src/serializer"
+	"gitee.com/bbk47/bbk/src/stub"
+	"gitee.com/bbk47/bbk/src/transport"
+	"gitee.com/bbk47/bbk/src/utils"
 	"github.com/avast/retry-go"
 	"github.com/bbk47/toolbox"
 	"log"
