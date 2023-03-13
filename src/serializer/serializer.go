@@ -2,7 +2,7 @@ package serializer
 
 import (
 	"fmt"
-	"gitee.com/bbk47/bbk/src/protocol"
+	"gitee.com/bbk47/bbk/v3/src/protocol"
 	"github.com/bbk47/toolbox"
 )
 

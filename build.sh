@@ -2,7 +2,7 @@
 
 dir=~/oschina/go-bbk
 program_name=bbk
-package_name=gitee.com/bbk47/bbk
+package_name=gitee.com/bbk47/bbk/v3
 version=v3.0.0
 
 

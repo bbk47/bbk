@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"gitee.com/bbk47/bbk/cmd"
+	"gitee.com/bbk47/bbk/v3/cmd"
 	"os"
 )
 

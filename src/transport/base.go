@@ -1,7 +1,7 @@
 package transport
 
 import (
-	"gitee.com/bbk47/bbk/src/server"
+	"gitee.com/bbk47/bbk/v3/src/server"
 	"github.com/gorilla/websocket"
 	"net"
 )

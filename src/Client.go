@@ -2,11 +2,11 @@ package bbk
 
 import (
 	"fmt"
-	"gitee.com/bbk47/bbk/src/proxy"
-	"gitee.com/bbk47/bbk/src/serializer"
-	"gitee.com/bbk47/bbk/src/stub"
-	"gitee.com/bbk47/bbk/src/transport"
-	"gitee.com/bbk47/bbk/src/utils"
+	"gitee.com/bbk47/bbk/v3/src/proxy"
+	"gitee.com/bbk47/bbk/v3/src/serializer"
+	"gitee.com/bbk47/bbk/v3/src/stub"
+	"gitee.com/bbk47/bbk/v3/src/transport"
+	"gitee.com/bbk47/bbk/v3/src/utils"
 	"github.com/avast/retry-go"
 	"github.com/bbk47/toolbox"
 	"log"

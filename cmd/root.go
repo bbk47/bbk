@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	. "gitee.com/bbk47/bbk/src"
+	. "gitee.com/bbk47/bbk/v3/src"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"log"
