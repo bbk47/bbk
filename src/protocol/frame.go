@@ -77,6 +77,7 @@ func FrameSegment(frame *Frame) []*Frame {
 				offset2 = leng
 			}
 			buf2 := make([]byte, offset2-offset)
+			// 多个切片共享底层数组：当多个切片共享同一个底层数组时，修改其中一个切片的值可能会影响其他切片的值。
 			copy(buf2, ldata[offset:offset2])
 			frame2 := Frame{Cid: frame.Cid, Type: frame.Type, Data: buf2}
 			frames = append(frames, &frame2)

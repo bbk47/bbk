@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bbk/cmd"
 	"fmt"
+	"gitee.com/bbk47/bbk/v3/cmd"
 	"os"
 )
 

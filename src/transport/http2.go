@@ -14,37 +14,6 @@ type Http2Transport struct {
 	h2socket *h2conn.Conn
 }
 
-func SendHttp2Stream(h2stream *h2conn.Conn, data []byte) (err error) {
-	length := len(data)
-	data2 := append([]byte{uint8(length >> 8), uint8(length % 256)}, data...)
-	_, err = h2stream.Write(data2)
-	return err
-}
-
-func BindH2cStreamEvents(h2stream *h2conn.Conn, events *Events) {
-	events.Status <- "open"
-	// send ready event
-	defer func() {
-		h2stream.Close()
-		events.Status <- "close"
-	}()
-	for {
-		// 接收数据
-		lenbuf := make([]byte, 2)
-		_, err := h2stream.Read(lenbuf)
-		if err != nil {
-			// send error event
-			events.Status <- "read err =>" + err.Error()
-			return
-		}
-		length1 := (int(lenbuf[0]))*256 + (int(lenbuf[1]))
-		databuf := make([]byte, length1)
-		_, err = h2stream.Read(databuf)
-		events.Data <- databuf
-		// send data event
-	}
-}
-
 func (ts *Http2Transport) SendPacket(data []byte) (err error) {
 	length := len(data)
 	data2 := append([]byte{uint8(length >> 8), uint8(length % 256)}, data...)

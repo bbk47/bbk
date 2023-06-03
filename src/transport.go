@@ -1,9 +1,9 @@
 package bbk
 
 import (
-	"bbk/src/transport"
 	"errors"
 	"fmt"
+	"gitee.com/bbk47/bbk/v3/src/transport"
 )
 
 func CreateTransport(tunOpts *TunnelOpts) (tsport transport.Transport, err error) {

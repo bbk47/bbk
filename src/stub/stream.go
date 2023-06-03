@@ -39,6 +39,7 @@ func (s *Stream) Read(data []byte) (n int, err error) {
 func (s *Stream) Write(p []byte) (n int, err error) {
 	//fmt.Printf("write stream[%s] data:%x\n", s.Cid, p)
 	buf2 := make([]byte, len(p))
+	// go中使用io.Copy时，底层使用slice作为buffer cache,传入的p一直是同一个切片, 实现的目标 Writer 不能及时消费写入的数据，会导致数据覆盖
 	copy(buf2, p) // io.Copy buf must copy data
 	s.ts.sendDataFrame(s.Cid, buf2)
 	return len(p), nil

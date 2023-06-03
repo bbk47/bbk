@@ -7,11 +7,6 @@ import (
 	"net/http"
 )
 
-type Events struct {
-	Data   chan []byte
-	Status chan string
-}
-
 type TunnelConn struct {
 	Tuntype   string
 	Wsocket   *websocket.Conn

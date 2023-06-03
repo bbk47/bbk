@@ -1,12 +1,12 @@
 package bbk
 
 import (
-	"bbk/src/serializer"
-	"bbk/src/server"
-	"bbk/src/stub"
-	"bbk/src/transport"
-	"bbk/src/utils"
 	"fmt"
+	"gitee.com/bbk47/bbk/v3/src/serializer"
+	"gitee.com/bbk47/bbk/v3/src/server"
+	"gitee.com/bbk47/bbk/v3/src/stub"
+	"gitee.com/bbk47/bbk/v3/src/transport"
+	"gitee.com/bbk47/bbk/v3/src/utils"
 	"github.com/bbk47/toolbox"
 	"net"
 )

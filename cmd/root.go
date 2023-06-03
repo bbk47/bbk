@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	bbk "bbk/src"
 	"fmt"
+	. "gitee.com/bbk47/bbk/v3/src"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"log"
@@ -15,7 +15,7 @@ var RootCmd = &cobra.Command{
 	Use: "bbk",
 	Run: func(cmd *cobra.Command, args []string) {
 		// Do Stuff Here
-		opts := bbk.Option{
+		opts := Option{
 			Mode:           viper.GetString("mode"),
 			ListenAddr:     viper.GetString("listenAddr"),
 			ListenPort:     viper.GetInt("listenPort"),
@@ -30,7 +30,7 @@ var RootCmd = &cobra.Command{
 			Ping:           viper.GetBool("ping"),
 		}
 
-		tunnelOps := bbk.TunnelOpts{
+		tunnelOps := TunnelOpts{
 			Protocol: viper.GetString("tunnelOpts.protocol"),
 			Secure:   viper.GetBool("tunnelOpts.secure"),
 			Host:     viper.GetString("tunnelOpts.host"),
@@ -51,10 +51,10 @@ var RootCmd = &cobra.Command{
 		}
 		if opts.Mode == "server" {
 
-			svr := bbk.NewServer(opts)
+			svr := NewServer(opts)
 			svr.Bootstrap()
 		} else {
-			cli := bbk.NewClient(opts)
+			cli := NewClient(opts)
 			cli.Bootstrap()
 
 		}
@@ -67,7 +67,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of bbk",
 	Long:  `All software has versions. This is xuxihai's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("bbk release v2.0.0 -- HEAD")
+		fmt.Println("bbk release v3.0.0 -- HEAD")
 	},
 }
 
