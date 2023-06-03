@@ -34,7 +34,7 @@ bash build.sh
 ```
 
 ```sh
-node bin/bbk.js -c etc/server.json
+go run main.go -c etc/server.json
 ```
 
 ## client
@@ -61,7 +61,7 @@ node bin/bbk.js -c etc/server.json
 ```
 
 ```sh
-node bin/bbk.js -c etc/client.json
+go run main.go  -c etc/client.json
 ```
 
 ## 更多例子参考examples目录
