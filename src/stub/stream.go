@@ -6,17 +6,15 @@ import (
 )
 
 type Stream struct {
-	Cid  string
-	Addr []byte
-	ts   *TunnelStub
-	rp   *io.PipeReader
-	wp   *io.PipeWriter
+	Cid string
+	ts  *TunnelStub
+	rp  *io.PipeReader
+	wp  *io.PipeWriter
 }
 
-func NewStream(cid string, addr []byte, ts *TunnelStub) *Stream {
+func NewStream(cid string, ts *TunnelStub) *Stream {
 	s := &Stream{}
 	s.Cid = cid
-	s.Addr = addr
 	s.ts = ts
 	rp, wp := io.Pipe()
 	s.rp = rp
@@ -25,14 +23,13 @@ func NewStream(cid string, addr []byte, ts *TunnelStub) *Stream {
 }
 
 func (s *Stream) produce(data []byte) error {
-	//fmt.Printf("produce wp====:%x\n", data)
+	//fmt.Printf("produce wp====:%s,%v\n", s.Cid, data)
 	_, err := s.wp.Write(data)
 	return err
 }
 
 func (s *Stream) Read(data []byte) (n int, err error) {
 	n, err = s.rp.Read(data)
-	//fmt.Printf("target read====:%x  len:%d\n", data[:n], n)
 	return n, err
 }
 

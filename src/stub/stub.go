@@ -73,10 +73,12 @@ func (ts *TunnelStub) closeStream(streamId string) {
 	ts.sendch <- frame
 }
 
-func (ts *TunnelStub) resetStream(streamId string) {
-	ts.destroyStream(streamId)
-	frame := &protocol.Frame{Cid: streamId, Type: protocol.RST_FRAME, Data: []byte{0x1, 0x2}}
-	ts.sendch <- frame
+func (ts *TunnelStub) produceData(stream *Stream, frame *protocol.Frame) {
+	err := stream.produce(frame.Data)
+	if err != nil {
+		fmt.Println("produce err:", err)
+		ts.closeStream(stream.Cid)
+	}
 }
 
 func (ts *TunnelStub) writeWorker() {
@@ -131,57 +133,34 @@ func (ts *TunnelStub) readWorker() {
 				continue
 			}
 			ts.pongFunc(upms, downms)
-		} else if respFrame.Type == protocol.INIT_FRAME {
-			//fmt.Println("init stream ====")
-			// create stream for server
-			st := NewStream(respFrame.Cid, respFrame.Data, ts)
-			ts.streams[st.Cid] = st
-			ts.streamch <- st
 		} else if respFrame.Type == protocol.STREAM_FRAME {
 			// find stream , write stream
 			streamId := respFrame.Cid
 			stream := ts.streams[streamId]
 			if stream == nil {
-				ts.resetStream(streamId)
-				continue
+				st := NewStream(respFrame.Cid, ts)
+				ts.streams[st.Cid] = st
+				ts.streamch <- st
+				stream = st
 			}
-			err := stream.produce(respFrame.Data)
-			//fmt.Println("produce okok")
-			if err != nil {
-				fmt.Println("produce err:", err)
-				ts.closeStream(streamId)
-			}
+			ts.produceData(stream, respFrame)
 		} else if respFrame.Type == protocol.FIN_FRAME {
 			ts.destroyStream(respFrame.Cid)
 		} else if respFrame.Type == protocol.RST_FRAME {
-			//destory stream
 			ts.destroyStream(respFrame.Cid)
-		} else if respFrame.Type == protocol.EST_FRAME {
-			streamId := respFrame.Cid
-			stream := ts.streams[streamId]
-			if stream == nil {
-				ts.resetStream(streamId)
-				continue
-			}
-			ts.streamch <- stream
 		} else {
 			fmt.Println("eception frame type:", respFrame.Type)
 		}
 	}
 }
 
-func (ts *TunnelStub) StartStream(addr []byte) *Stream {
-	//fmt.Println("start stream===>")
-	streamId := utils.GetUUID()
-	stream := NewStream(streamId, addr, ts)
+func (ts *TunnelStub) CreateStream(streamId string) *Stream {
+	if streamId == "" {
+		streamId = utils.GetUUID()
+	}
+	stream := NewStream(streamId, ts)
 	ts.streams[streamId] = stream
-	frame := &protocol.Frame{Cid: streamId, Type: protocol.INIT_FRAME, Data: addr}
-	ts.sendch <- frame
 	return stream
-}
-func (ts *TunnelStub) SetReady(stream *Stream) {
-	frame := &protocol.Frame{Cid: stream.Cid, Type: protocol.EST_FRAME, Data: stream.Addr}
-	ts.sendch <- frame
 }
 
 func (ts *TunnelStub) destroyStream(streamId string) {

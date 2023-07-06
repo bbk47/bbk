@@ -2,6 +2,7 @@ package bbk
 
 import (
 	"fmt"
+	"gitee.com/bbk47/bbk/v3/src/forward"
 	"gitee.com/bbk47/bbk/v3/src/proxy"
 	"gitee.com/bbk47/bbk/v3/src/serializer"
 	"gitee.com/bbk47/bbk/v3/src/stub"
@@ -32,7 +33,6 @@ type Client struct {
 	stubclient   *stub.TunnelStub
 	transport    transport.Transport
 	lastPong     uint64
-	browserProxy map[string]*BrowserObj //线程共享变量
 }
 
 func NewClient(opts Option) Client {
@@ -40,7 +40,6 @@ func NewClient(opts Option) Client {
 
 	cli.opts = opts
 	cli.tunnelOps = opts.TunnelOpts
-	cli.browserProxy = make(map[string]*BrowserObj)
 	cli.reqch = make(chan *BrowserObj, 1024)
 	// other
 	cli.tunnelStatus = TUNNEL_INIT
@@ -81,23 +80,11 @@ func (cli *Client) setupwsConnection() {
 
 func (cli *Client) listenStream() {
 	for {
-		stream, err := cli.stubclient.Accept()
+		_, err := cli.stubclient.Accept()
 		if err != nil {
 			// transport error
 			cli.tunnelStatus = TUNNEL_DISCONNECT
 			return
-		}
-		//fmt.Println("=====>get stream")
-		browerobj := cli.browserProxy[stream.Cid]
-		if browerobj != nil {
-			select {
-			case browerobj.stream_ch <- stream:
-			// send to proxy
-
-			case <-time.After(15 * time.Second):
-				cli.logger.Warnf("===timeout===!")
-				continue
-			}
 		}
 	}
 }
@@ -115,17 +102,18 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 
 	browserobj := &BrowserObj{proxysocket: socket, stream_ch: make(chan *stub.Stream)}
 	cli.reqch <- browserobj
-
-	select {
-	case stream := <-browserobj.stream_ch: // 收到信号才开始读
-		cli.logger.Infof("EST success:%s \n", remoteaddr)
-		defer func() {
-			stream.Close()
-			delete(cli.browserProxy, stream.Cid)
-		}()
-		stub.Relay(socket, stream)
-	case <-time.After(15 * time.Second):
-		cli.logger.Warnf("connect %s timeout 15000ms exceeded!", remoteaddr)
+	cli.logger.Info("create stream.ok.")
+	stream := <-browserobj.stream_ch
+	cli.logger.Info("create stream.ok2.")
+	defer stream.Close()
+	cli.logger.Info("start stream handshake..")
+	err = forward.ShadowsockHandshake(stream, addrInfo.Addr, addrInfo.Port)
+	if err != nil {
+		return
+	}
+	err = stub.Relay(socket, stream)
+	if err != nil {
+		cli.logger.Errorf("reply  err:%s\n", err.Error())
 	}
 }
 
@@ -137,8 +125,8 @@ func (cli *Client) serviceWorker() {
 			}
 			select {
 			case ref := <-cli.reqch:
-				st := cli.stubclient.StartStream(ref.proxysocket.GetAddr())
-				cli.browserProxy[st.Cid] = ref
+				st := cli.stubclient.CreateStream("")
+				ref.stream_ch <- st
 			}
 		}
 	}()

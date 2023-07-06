@@ -1,14 +1,13 @@
 package bbk
 
 import (
-	"fmt"
+	"gitee.com/bbk47/bbk/v3/src/forward"
 	"gitee.com/bbk47/bbk/v3/src/serializer"
 	"gitee.com/bbk47/bbk/v3/src/server"
 	"gitee.com/bbk47/bbk/v3/src/stub"
 	"gitee.com/bbk47/bbk/v3/src/transport"
 	"gitee.com/bbk47/bbk/v3/src/utils"
 	"github.com/bbk47/toolbox"
-	"net"
 )
 
 type Server struct {
@@ -36,25 +35,14 @@ func (servss *Server) handleConnection(tunnel *server.TunnelConn) {
 				servss.logger.Errorf("stream accept err:%s\n", err.Error())
 				return
 			}
-			go servss.handleStream(serverStub, stream)
+			go servss.handleStream(stream)
 		}
 	}()
 }
 
-func (servss *Server) handleStream(serstub *stub.TunnelStub, stream *stub.Stream) {
+func (servss *Server) handleStream(stream *stub.Stream) {
 	defer stream.Close()
-
-	addrInfo, err := toolbox.ParseAddrInfo(stream.Addr)
-	remoteAddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
-	servss.logger.Infof("REQ CONNECT=>%s\n", remoteAddr)
-	tsocket, err := net.Dial("tcp", remoteAddr)
-	if err != nil {
-		return
-	}
-	defer tsocket.Close()
-	servss.logger.Infof("DIAL SUCCESS==>%s\n", remoteAddr)
-	serstub.SetReady(stream)
-	err = stub.Relay(tsocket, stream)
+	err := forward.ShadowsockForward(stream)
 	if err != nil {
 		servss.logger.Errorf("stream err:%s\n", err.Error())
 	}
