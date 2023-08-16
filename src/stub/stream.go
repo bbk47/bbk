@@ -6,14 +6,14 @@ import (
 )
 
 type Stream struct {
-	Cid  string
+	Cid  uint32
 	Addr []byte
 	ts   *TunnelStub
 	rp   *io.PipeReader
 	wp   *io.PipeWriter
 }
 
-func NewStream(cid string, addr []byte, ts *TunnelStub) *Stream {
+func NewStream(cid uint32, addr []byte, ts *TunnelStub) *Stream {
 	s := &Stream{}
 	s.Cid = cid
 	s.Addr = addr

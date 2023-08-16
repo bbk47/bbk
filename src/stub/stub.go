@@ -6,7 +6,6 @@ import (
 	"gitee.com/bbk47/bbk/v3/src/protocol"
 	"gitee.com/bbk47/bbk/v3/src/serializer"
 	"gitee.com/bbk47/bbk/v3/src/transport"
-	"gitee.com/bbk47/bbk/v3/src/utils"
 	"github.com/bbk47/toolbox"
 	"strconv"
 	"time"
@@ -15,10 +14,11 @@ import (
 type TunnelStub struct {
 	serizer  *serializer.Serializer
 	tsport   transport.Transport
-	streams  map[string]*Stream
+	streams  map[uint32]*Stream
 	streamch chan *Stream
 	sendch   chan *protocol.Frame
 	closech  chan uint8
+	seq      uint32
 	//wlock    sync.Mutex
 	pongFunc func(up, down int64)
 }
@@ -27,7 +27,7 @@ func NewTunnelStub(tsport transport.Transport, serizer *serializer.Serializer) *
 	stub := TunnelStub{tsport: tsport, serizer: serizer}
 	stub.streamch = make(chan *Stream, 1024)
 	stub.sendch = make(chan *protocol.Frame, 1024)
-	stub.streams = make(map[string]*Stream)
+	stub.streams = make(map[uint32]*Stream)
 	go stub.readWorker()
 	go stub.writeWorker()
 	return &stub
@@ -51,7 +51,7 @@ func (ts *TunnelStub) sendTinyFrame(frame *protocol.Frame) error {
 	return ts.tsport.SendPacket(binaryData)
 }
 
-func (ts *TunnelStub) sendDataFrame(streamId string, data []byte) {
+func (ts *TunnelStub) sendDataFrame(streamId uint32, data []byte) {
 	frame := &protocol.Frame{Cid: streamId, Type: protocol.STREAM_FRAME, Data: data}
 	ts.sendch <- frame
 }
@@ -67,13 +67,13 @@ func (ts *TunnelStub) sendFrame(frame *protocol.Frame) error {
 	return nil
 }
 
-func (ts *TunnelStub) closeStream(streamId string) {
+func (ts *TunnelStub) closeStream(streamId uint32) {
 	ts.destroyStream(streamId)
 	frame := &protocol.Frame{Cid: streamId, Type: protocol.FIN_FRAME, Data: []byte{0x1, 0x1}}
 	ts.sendch <- frame
 }
 
-func (ts *TunnelStub) resetStream(streamId string) {
+func (ts *TunnelStub) resetStream(streamId uint32) {
 	ts.destroyStream(streamId)
 	frame := &protocol.Frame{Cid: streamId, Type: protocol.RST_FRAME, Data: []byte{0x1, 0x2}}
 	ts.sendch <- frame
@@ -172,7 +172,11 @@ func (ts *TunnelStub) readWorker() {
 
 func (ts *TunnelStub) StartStream(addr []byte) *Stream {
 	//fmt.Println("start stream===>")
-	streamId := utils.GetUUID()
+	ts.seq = ts.seq + 1
+	if (ts.seq ^ 0x7fffffff) == 0 {
+		ts.seq = 1
+	}
+	streamId := ts.seq
 	stream := NewStream(streamId, addr, ts)
 	ts.streams[streamId] = stream
 	frame := &protocol.Frame{Cid: streamId, Type: protocol.INIT_FRAME, Data: addr}
@@ -184,7 +188,7 @@ func (ts *TunnelStub) SetReady(stream *Stream) {
 	ts.sendch <- frame
 }
 
-func (ts *TunnelStub) destroyStream(streamId string) {
+func (ts *TunnelStub) destroyStream(streamId uint32) {
 	stream := ts.streams[streamId]
 	if stream != nil {
 		stream.Close()
@@ -194,7 +198,7 @@ func (ts *TunnelStub) destroyStream(streamId string) {
 
 func (ts *TunnelStub) Ping() {
 	data := toolbox.GetNowInt64Bytes()
-	frame := &protocol.Frame{Cid: "00000000000000000000000000000000", Type: protocol.PING_FRAME, Data: data}
+	frame := &protocol.Frame{Cid: 0, Type: protocol.PING_FRAME, Data: data}
 	ts.sendch <- frame
 }
 

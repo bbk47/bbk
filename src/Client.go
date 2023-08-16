@@ -15,7 +15,7 @@ import (
 )
 
 type BrowserObj struct {
-	Cid         string
+	Cid         uint32
 	proxysocket proxy.ProxySocket
 	stream_ch   chan *stub.Stream
 }
@@ -32,7 +32,7 @@ type Client struct {
 	stubclient   *stub.TunnelStub
 	transport    transport.Transport
 	lastPong     uint64
-	browserProxy map[string]*BrowserObj //线程共享变量
+	browserProxy map[uint32]*BrowserObj //线程共享变量
 }
 
 func NewClient(opts Option) Client {
@@ -40,7 +40,7 @@ func NewClient(opts Option) Client {
 
 	cli.opts = opts
 	cli.tunnelOps = opts.TunnelOpts
-	cli.browserProxy = make(map[string]*BrowserObj)
+	cli.browserProxy = make(map[uint32]*BrowserObj)
 	cli.reqch = make(chan *BrowserObj, 1024)
 	// other
 	cli.tunnelStatus = TUNNEL_INIT

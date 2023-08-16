@@ -17,15 +17,15 @@ const DATA_MAX_SIZE = 1024 * 2
  *
  * // required: cid, type,  data
  * @param {*} frame
- * |<-version[1]->|<--cidLen[1]-->|<---(cid)---->|<--type[1]-->|<--dataLen[2]-->|<-------data------>|
- * |-----s1 ------|-------s2------|-----s3 ------|-------s4----|-------s5 ------|--------s6---------|
+ * |<-version[1]->|<--type[1]-->|<---cid--->|<-------data------>|
+ * |------ 1 -----|-------1-----|-----4-----|-------------------|
  * @returns
  */
 
 type Frame struct {
 	Version uint8
-	Cid     string
 	Type    uint8
+	Cid     uint32
 	Data    []byte
 	Stime   int
 	Atime   int
@@ -35,27 +35,21 @@ func Encode(frame *Frame) []byte {
 	if frame.Version == 0 {
 		frame.Version = 1
 	}
-	cidlen := len(frame.Cid)
-	datalen := len(frame.Data)
-	ret1 := []byte{frame.Version, uint8(cidlen)} // s1,s2
-	cidBuf := []byte(frame.Cid)                  // s3
-	ret2 := append(ret1, cidBuf...)              // s1+s2+s3
-	typeBuf := []byte{frame.Type}
-	ret3 := append(ret2, typeBuf[0])                             // s1+s2+s3+s4
-	ret4 := append(ret3, uint8(datalen>>8), uint8(datalen&0xff)) // +s5
-	ret5 := append(ret4, frame.Data...)                          // +s6
-	return ret5
+	cid := frame.Cid
+	ret1 := []byte{frame.Version, frame.Type}
+	cidBuf := []byte{byte(cid >> 24), byte(cid >> 16), byte(cid >> 8), byte(cid & 0xff)} // s3
+	ret2 := append(ret1, cidBuf...)                                                      // s1+s2+s3
+	ret3 := append(ret2, frame.Data...)                                                  // +s6
+	return ret3
 }
 
 func Decode(binaryDt []byte) (frame *Frame, err error) {
-	ver := binaryDt[0]                                               // s1
-	cidlen := binaryDt[1]                                            // s2
-	cid := string(binaryDt[2 : cidlen+2])                            // s3
-	typeVal := binaryDt[cidlen+2]                                    // s4
-	datalen := int(binaryDt[cidlen+3])*256 + int(binaryDt[cidlen+4]) //s5
-	startIndex := int(cidlen + 5)
-	dataBuf := binaryDt[startIndex : datalen+startIndex] // s6
+	ver := binaryDt[0]     // s1
+	typeVal := binaryDt[1] // s2
+	cid := uint32(binaryDt[2])<<24 | uint32(binaryDt[3])<<16 | uint32(binaryDt[4])<<8 | uint32(binaryDt[5])
+	dataBuf := binaryDt[6:] // s6
 	frame1 := Frame{Version: ver, Cid: cid, Type: typeVal, Data: dataBuf}
+
 	return &frame1, nil
 }
 
