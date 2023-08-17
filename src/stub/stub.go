@@ -47,7 +47,7 @@ func (ts *TunnelStub) sendTinyFrame(frame *protocol.Frame) error {
 	//ts.wlock.Lock()
 	//defer ts.wlock.Unlock()
 	// 发送数据
-	//log.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
+	//log.Printf("write tunnel cid:%d, data[%d]bytes, frame type:%d\n", frame.Cid, len(binaryData), frame.Type)
 	return ts.tsport.SendPacket(binaryData)
 }
 
@@ -110,7 +110,7 @@ func (ts *TunnelStub) readWorker() {
 			return
 		}
 
-		//log.Printf("read  tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.Cid, len(packet), respFrame.Type)
+		//log.Printf("read  tunnel cid:%d, data[%d]bytes, frame type:%d\n", respFrame.Cid, len(packet), respFrame.Type)
 		if respFrame.Type == protocol.PING_FRAME {
 			timebs := toolbox.GetNowInt64Bytes()
 			data := append(respFrame.Data, timebs...)

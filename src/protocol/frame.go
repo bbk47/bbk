@@ -1,5 +1,7 @@
 package protocol
 
+import "github.com/bbk47/toolbox"
+
 const (
 	INIT_FRAME   uint8 = 0x0
 	STREAM_FRAME uint8 = 0x1
@@ -17,8 +19,8 @@ const DATA_MAX_SIZE = 1024 * 2
  *
  * // required: cid, type,  data
  * @param {*} frame
- * |<-version[1]->|<--type[1]-->|<---cid--->|<-------data------>|
- * |------ 1 -----|-------1-----|-----4-----|-------------------|
+ * |<-----mask(random)----->|<-version[1]->|<--type[1]-->|<---cid--->|<-------data------>|
+ * |---------2--------------|------ 1 -----|-------1-----|-----4-----|-------------------|
  * @returns
  */
 
@@ -35,8 +37,9 @@ func Encode(frame *Frame) []byte {
 	if frame.Version == 0 {
 		frame.Version = 1
 	}
+	randbs := toolbox.GetRandByte(2)
 	cid := frame.Cid
-	ret1 := []byte{frame.Version, frame.Type}
+	ret1 := []byte{randbs[0], randbs[1], frame.Version, frame.Type}
 	cidBuf := []byte{byte(cid >> 24), byte(cid >> 16), byte(cid >> 8), byte(cid & 0xff)} // s3
 	ret2 := append(ret1, cidBuf...)                                                      // s1+s2+s3
 	ret3 := append(ret2, frame.Data...)                                                  // +s6
@@ -44,6 +47,7 @@ func Encode(frame *Frame) []byte {
 }
 
 func Decode(binaryDt []byte) (frame *Frame, err error) {
+	binaryDt = binaryDt[2:]
 	ver := binaryDt[0]     // s1
 	typeVal := binaryDt[1] // s2
 	cid := uint32(binaryDt[2])<<24 | uint32(binaryDt[3])<<16 | uint32(binaryDt[4])<<8 | uint32(binaryDt[5])
