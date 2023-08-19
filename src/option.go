@@ -1,21 +1,5 @@
 package bbk
 
-type Option struct {
-	Mode           string      `json:"mode"`
-	ListenAddr     string      `json:"listenAddr"`
-	ListenPort     int         `json:"listenPort"`
-	ListenHttpPort int         `json:"listenPort"`
-	LogLevel       string      `json:"logLevel"`
-	Ping           bool        `json:"ping"`
-	Password       string      `json:"password"`
-	Method         string      `json:"method"`
-	WorkMode       string      `json:"workMode"`
-	WorkPath       string      `json:"workPath"`
-	SslKey         string      `json:"sslKey"` // server
-	SslCrt         string      `json:"sslCrt"` // server
-	TunnelOpts     *TunnelOpts `json:"tunnelOpts"`
-}
-
 type TunnelOpts struct {
 	Protocol string `json:"protocol"`
 	Secure   bool   `json:"secure"`
@@ -24,6 +8,29 @@ type TunnelOpts struct {
 	Path     string `json:"path"`
 	Method   string `json:"method"`
 	Password string `json:"password"`
+}
+
+type ClientOpts struct {
+	Mode           string      `json:"mode"`
+	ListenAddr     string      `json:"listenAddr"`
+	ListenPort     int         `json:"listenPort"`
+	ListenHttpPort int         `json:"listenPort"`
+	LogLevel       string      `json:"logLevel"`
+	Ping           bool        `json:"ping"`
+	TunnelOpts     *TunnelOpts `json:"tunnelOpts"`
+}
+
+type ServerOpts struct {
+	Mode       string `json:"mode"`
+	ListenAddr string `json:"listenAddr"`
+	ListenPort int    `json:"listenPort"`
+	LogLevel   string `json:"logLevel"`
+	Password   string `json:"password"`
+	Method     string `json:"method"`
+	WorkMode   string `json:"workMode"`
+	WorkPath   string `json:"workPath"`
+	SslKey     string `json:"sslKey"` // server
+	SslCrt     string `json:"sslCrt"` // server
 }
 
 //const defaultOpts = {

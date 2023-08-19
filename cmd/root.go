@@ -14,49 +14,49 @@ var cfgFile string
 var RootCmd = &cobra.Command{
 	Use: "bbk",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Do Stuff Here
-		opts := Option{
-			Mode:           viper.GetString("mode"),
-			ListenAddr:     viper.GetString("listenAddr"),
-			ListenPort:     viper.GetInt("listenPort"),
-			ListenHttpPort: viper.GetInt("listenHttpPort"),
-			LogLevel:       viper.GetString("logLevel"),
-			Method:         viper.GetString("method"),
-			Password:       viper.GetString("password"),
-			WorkMode:       viper.GetString("workMode"),
-			WorkPath:       viper.GetString("workPath"),
-			SslKey:         viper.GetString("sslKey"),
-			SslCrt:         viper.GetString("sslCrt"),
-			Ping:           viper.GetBool("ping"),
-		}
 
-		tunnelOps := TunnelOpts{
-			Protocol: viper.GetString("tunnelOpts.protocol"),
-			Secure:   viper.GetBool("tunnelOpts.secure"),
-			Host:     viper.GetString("tunnelOpts.host"),
-			Port:     viper.GetString("tunnelOpts.port"),
-			Path:     viper.GetString("tunnelOpts.path"),
-			Method:   viper.GetString("tunnelOpts.method"),
-			Password: viper.GetString("tunnelOpts.password"),
-		}
+		mode := viper.GetString("mode")
 
-		opts.TunnelOpts = &tunnelOps
-
-		if opts.Mode != "client" {
-			opts.TunnelOpts = nil
-		}
-
-		if opts.Mode != "server" && opts.Mode != "client" {
-			log.Fatalln("invalid mode config in ", cfgFile)
-		}
-		if opts.Mode == "server" {
-
-			svr := NewServer(opts)
+		if mode == "server" {
+			servopts := &ServerOpts{
+				Mode:       "server",
+				ListenAddr: viper.GetString("listenAddr"),
+				ListenPort: viper.GetInt("listenPort"),
+				LogLevel:   viper.GetString("logLevel"),
+				Method:     viper.GetString("method"),
+				Password:   viper.GetString("password"),
+				WorkMode:   viper.GetString("workMode"),
+				WorkPath:   viper.GetString("workPath"),
+				SslKey:     viper.GetString("sslKey"),
+				SslCrt:     viper.GetString("sslCrt"),
+			}
+			svr := NewServer(servopts)
 			svr.Bootstrap()
-		} else {
-			cli := NewClient(opts)
-			cli.Bootstrap()
+		} else if mode == "client" {
+			cliopts := &ClientOpts{
+				Mode:           viper.GetString("mode"),
+				ListenAddr:     viper.GetString("listenAddr"),
+				ListenPort:     viper.GetInt("listenPort"),
+				ListenHttpPort: viper.GetInt("listenHttpPort"),
+				LogLevel:       viper.GetString("logLevel"),
+				Ping:           viper.GetBool("ping"),
+				TunnelOpts:     nil,
+			}
 
+			cliopts.TunnelOpts = &TunnelOpts{
+				Protocol: viper.GetString("tunnelOpts.protocol"),
+				Secure:   viper.GetBool("tunnelOpts.secure"),
+				Host:     viper.GetString("tunnelOpts.host"),
+				Port:     viper.GetString("tunnelOpts.port"),
+				Path:     viper.GetString("tunnelOpts.path"),
+				Method:   viper.GetString("tunnelOpts.method"),
+				Password: viper.GetString("tunnelOpts.password"),
+			}
+
+			cli := NewClient(cliopts)
+			cli.Bootstrap()
+		} else {
+			log.Fatalln("invalid mode config in ", cfgFile)
 		}
 
 	},

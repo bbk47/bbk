@@ -21,7 +21,7 @@ type BrowserObj struct {
 }
 
 type Client struct {
-	opts      Option
+	opts      *ClientOpts
 	serizer   *serializer.Serializer
 	logger    *toolbox.Logger
 	tunnelOps *TunnelOpts
@@ -35,7 +35,7 @@ type Client struct {
 	browserProxy map[uint32]*BrowserObj //线程共享变量
 }
 
-func NewClient(opts Option) Client {
+func NewClient(opts *ClientOpts) Client {
 	cli := Client{}
 
 	cli.opts = opts

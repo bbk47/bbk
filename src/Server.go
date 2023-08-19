@@ -12,12 +12,12 @@ import (
 )
 
 type Server struct {
-	opts    Option
+	opts    *ServerOpts
 	logger  *toolbox.Logger
 	serizer *serializer.Serializer
 }
 
-func NewServer(opt Option) Server {
+func NewServer(opt *ServerOpts) Server {
 	s := Server{}
 	s.opts = opt
 
