@@ -11,6 +11,7 @@ import (
 	"github.com/bbk47/toolbox"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -181,10 +182,23 @@ func (cli *Client) initProxyServer(port int, isConnect bool) {
 
 func (cli *Client) initServer() {
 	opt := cli.opts
+	var wg sync.WaitGroup
 	if opt.ListenHttpPort > 1080 {
-		go cli.initProxyServer(opt.ListenHttpPort, true)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cli.initProxyServer(opt.ListenHttpPort, true)
+		}()
 	}
-	cli.initProxyServer(opt.ListenPort, false)
+	if opt.ListenPort != 0 && opt.ListenPort > 1024 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cli.initProxyServer(opt.ListenPort, false)
+		}()
+	}
+	wg.Wait()
+	cli.logger.Infof("All goroutine finished!\n")
 }
 
 func (cli *Client) initSerizer() {
