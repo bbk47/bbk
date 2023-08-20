@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 
-dir=~/oschina/go-bbk
 program_name=bbk
-package_name=gitee.com/bbk47/bbk/v3
-version=v3.0.0
+version=v3.0.2
 
 
 platforms=("windows/amd64" "linux/amd64" "darwin/amd64")
@@ -18,7 +16,7 @@ do
         output_name+='.exe'
     fi
 
-    env GOOS=$GOOS GOARCH=$GOARCH go build -o $output_name $package_name
+    env GOOS=$GOOS GOARCH=$GOARCH go build -o $output_name ./main.go
     if [ $? -ne 0 ]; then
         echo 'An error has occurred! Aborting the script execution...'
         exit 1
