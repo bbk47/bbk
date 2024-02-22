@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"gitee.com/bbk47/bbk/v3/cmd"
+	"github.com/bbk47/bbk/v3/cmd"
 )
 
 var (

@@ -1,4 +1,4 @@
-module gitee.com/bbk47/bbk/v3
+module github.com/bbk47/bbk/v3
 
 go 1.15
 

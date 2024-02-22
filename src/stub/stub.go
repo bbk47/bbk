@@ -3,12 +3,13 @@ package stub
 import (
 	"errors"
 	"fmt"
-	"gitee.com/bbk47/bbk/v3/src/protocol"
-	"gitee.com/bbk47/bbk/v3/src/serializer"
-	"gitee.com/bbk47/bbk/v3/src/transport"
-	"github.com/bbk47/toolbox"
 	"strconv"
 	"time"
+
+	"github.com/bbk47/bbk/v3/src/protocol"
+	"github.com/bbk47/bbk/v3/src/serializer"
+	"github.com/bbk47/bbk/v3/src/transport"
+	"github.com/bbk47/toolbox"
 )
 
 type TunnelStub struct {

@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	. "gitee.com/bbk47/bbk/v3/src"
+	. "github.com/bbk47/bbk/v3/src"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
