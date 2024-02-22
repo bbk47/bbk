@@ -1,3 +1,7 @@
+## 3.0.1
+
+- add github actions for auto build
+
 ## 3.0.0
 
 - setup stub worker over transport

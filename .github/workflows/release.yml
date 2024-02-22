@@ -34,7 +34,7 @@ jobs:
           draft: false
           prerelease: false
           body: |
-            Please refer to [CHANGELOG.md](https://github.com/bbk47/go-bbk/blob/main/changelog.md) for details.
+            Please refer to [CHANGELOG.md](https://github.com/bbk47/go-bbk/blob/master/changelog.md) for details.
 
       - uses: AButler/upload-release-assets@v3.0
         with:
