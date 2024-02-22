@@ -2,14 +2,27 @@ package cmd
 
 import (
 	"fmt"
+	"log"
+	"os"
+
 	. "gitee.com/bbk47/bbk/v3/src"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"log"
-	"os"
 )
 
 var cfgFile string
+var (
+	// 版本号
+	appVersion = "1.0.0"
+	// Git提交哈希
+	appCommitHash = "none"
+)
+
+func SetVariables(ver, commitHash string ){
+	appVersion=ver
+	appCommitHash = commitHash
+}
+
 
 var RootCmd = &cobra.Command{
 	Use: "bbk",
@@ -67,7 +80,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of bbk",
 	Long:  `All software has versions. This is xuxihai's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("bbk release v3.0.0 -- HEAD")
+		fmt.Printf("bbk release %s-%s by xuxihai\n",appVersion,appCommitHash)
 	},
 }
 
