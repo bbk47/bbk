@@ -34,6 +34,7 @@ type Client struct {
 	stubclient   *stub.TunnelStub
 	transport    transport.Transport
 	lastPong     uint64
+	wlock        sync.Mutex
 	browserProxy map[uint32]*BrowserObj //线程共享变量
 }
 
@@ -121,11 +122,11 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	select {
 	case stream := <-browserobj.stream_ch: // 收到信号才开始读
 		cli.logger.Infof("EST success:%s \n", remoteaddr)
-		defer func() {
-			stream.Close()
-			delete(cli.browserProxy, stream.Cid)
-		}()
-		stub.Relay(socket, stream)
+		go utils.Forward(socket, stream, "socket->stream:"+remoteaddr, cli.logger)
+		utils.Forward(stream, socket, "stream->socket:"+remoteaddr, cli.logger) // await stream to socket complete
+		cli.wlock.Lock()
+		delete(cli.browserProxy, stream.Cid)
+		cli.wlock.Unlock()
 	case <-time.After(15 * time.Second):
 		cli.logger.Warnf("connect %s timeout 15000ms exceeded!", remoteaddr)
 	}
@@ -140,7 +141,9 @@ func (cli *Client) serviceWorker() {
 			select {
 			case ref := <-cli.reqch:
 				st := cli.stubclient.StartStream(ref.proxysocket.GetAddr())
+				cli.wlock.Lock()
 				cli.browserProxy[st.Cid] = ref
+				cli.wlock.Unlock()
 			}
 		}
 	}()

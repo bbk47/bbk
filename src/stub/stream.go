@@ -2,7 +2,6 @@ package stub
 
 import (
 	"io"
-	"sync"
 )
 
 type Stream struct {
@@ -32,6 +31,11 @@ func (s *Stream) produce(data []byte) error {
 
 func (s *Stream) Read(data []byte) (n int, err error) {
 	n, err = s.rp.Read(data)
+	if err == io.ErrClosedPipe {
+		// ErrClosedPipe emit only stream.Close()  called
+		//fmt.Println("ErrClosedPipe received=====")
+		return 0, io.EOF
+	}
 	//fmt.Printf("target read====:%x  len:%d\n", data[:n], n)
 	return n, err
 }
@@ -49,26 +53,5 @@ func (s *Stream) Close() error {
 	//log.Println("closeing ch")
 	s.rp.Close()
 	s.wp.Close()
-	return nil
-}
-
-func Relay(left, right io.ReadWriteCloser) error {
-	var err, err1 error
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_, err1 = io.Copy(right, left)
-	}()
-	_, err = io.Copy(left, right)
-	wg.Wait()
-
-	if err != nil {
-		return err
-	}
-
-	if err1 != nil {
-		return err1
-	}
 	return nil
 }

@@ -26,79 +26,82 @@ func NewServer(opt *ServerOpts) Server {
 	return s
 }
 
-func (servss *Server) handleConnection(tunnel *server.TunnelConn) {
+func (sir *Server) handleConnection(tunnel *server.TunnelConn) {
 	tsport := transport.WrapTunnel(tunnel)
-	serverStub := stub.NewTunnelStub(tsport, servss.serizer)
+	serverStub := stub.NewTunnelStub(tsport, sir.serizer)
 	go func() {
 		for {
 			stream, err := serverStub.Accept()
 			if err != nil {
 				// transport error
-				servss.logger.Errorf("stream accept err:%s\n", err.Error())
+				sir.logger.Errorf("stream accept err:%s\n", err.Error())
 				return
 			}
-			go servss.handleStream(serverStub, stream)
+			go sir.handleStream(serverStub, stream)
 		}
 	}()
 }
 
-func (servss *Server) handleStream(serstub *stub.TunnelStub, stream *stub.Stream) {
+func (sir *Server) handleStream(serstub *stub.TunnelStub, stream *stub.Stream) {
 	defer stream.Close()
 
 	addrInfo, err := toolbox.ParseAddrInfo(stream.Addr)
+	if err != nil {
+		return
+	}
 	remoteAddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
-	servss.logger.Infof("REQ CONNECT=>%s\n", remoteAddr)
+	sir.logger.Infof("REQ CONNECT=>%s\n", remoteAddr)
 	tsocket, err := net.Dial("tcp", remoteAddr)
 	if err != nil {
 		return
 	}
 	defer tsocket.Close()
-	servss.logger.Infof("DIAL SUCCESS==>%s\n", remoteAddr)
+	sir.logger.Infof("DIAL SUCCESS==>%s\n", remoteAddr)
 	serstub.SetReady(stream)
-	err = stub.Relay(tsocket, stream)
-	if err != nil {
-		servss.logger.Errorf("stream err:%s\n", err.Error())
-	}
+	sir.logger.Infof("Forwarding ==>%s\n", remoteAddr)
+	go utils.Forward(stream, tsocket, "stream->tsocket:"+remoteAddr, sir.logger)
+	utils.Forward(tsocket, stream, "tsocket->stream:"+remoteAddr, sir.logger)
+	sir.logger.Infof("Stream CLOSE==>%s\n", remoteAddr)
 }
 
-func (servss *Server) checkServerOk(srv server.FrameServer, err error) {
+func (sir *Server) checkServerOk(srv server.FrameServer, err error) {
 	if err != nil {
-		servss.logger.Fatalf("create server failed: %v\n", err)
+		sir.logger.Fatalf("create server failed: %v\n", err)
 		return
 	}
-	servss.logger.Infof("server listen %s\n", srv.GetAddr())
-	srv.ListenConn(servss.handleConnection)
+	sir.logger.Infof("server listen %s\n", srv.GetAddr())
+	srv.ListenConn(sir.handleConnection)
 }
 
-func (servss *Server) initServer() {
-	opt := servss.opts
+func (sir *Server) initServer() {
+	opt := sir.opts
 	if opt.WorkMode == "tcp" {
 		srv, err := server.NewAbcTcpServer(opt.ListenAddr, opt.ListenPort)
-		servss.checkServerOk(srv, err)
+		sir.checkServerOk(srv, err)
 	} else if opt.WorkMode == "tls" {
 		srv, err := server.NewAbcTlsServer(opt.ListenAddr, opt.ListenPort, opt.SslCrt, opt.SslKey)
-		servss.checkServerOk(srv, err)
+		sir.checkServerOk(srv, err)
 	} else if opt.WorkMode == "ws" {
 		srv, err := server.NewAbcWssServer(opt.ListenAddr, opt.ListenPort, opt.WorkPath)
-		servss.checkServerOk(srv, err)
+		sir.checkServerOk(srv, err)
 	} else if opt.WorkMode == "h2" {
 		srv, err := server.NewAbcHttp2Server(opt.ListenAddr, opt.ListenPort, opt.WorkPath, opt.SslCrt, opt.SslKey)
-		servss.checkServerOk(srv, err)
+		sir.checkServerOk(srv, err)
 	} else {
-		servss.logger.Infof("unsupport work mode [%s]\n", opt.WorkMode)
+		sir.logger.Infof("unsupport work mode [%s]\n", opt.WorkMode)
 	}
 }
 
-func (servss *Server) initSerizer() {
-	opt := servss.opts
+func (sir *Server) initSerizer() {
+	opt := sir.opts
 	serizer, err := serializer.NewSerializer(opt.Method, opt.Password)
 	if err != nil {
-		servss.logger.Fatal(err)
+		sir.logger.Fatal(err)
 	}
-	servss.serizer = serizer
+	sir.serizer = serizer
 }
 
-func (servss *Server) Bootstrap() {
-	servss.initSerizer()
-	servss.initServer()
+func (sir *Server) Bootstrap() {
+	sir.initSerizer()
+	sir.initServer()
 }

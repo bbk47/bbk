@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/bbk47/bbk/v3/src/protocol"
@@ -20,7 +21,7 @@ type TunnelStub struct {
 	sendch   chan *protocol.Frame
 	closech  chan uint8
 	seq      uint32
-	//wlock    sync.Mutex
+	mlock    sync.Mutex
 	pongFunc func(up, down int64)
 }
 
@@ -136,12 +137,12 @@ func (ts *TunnelStub) readWorker() {
 			//fmt.Println("init stream ====")
 			// create stream for server
 			st := NewStream(respFrame.Cid, respFrame.Data, ts)
-			ts.streams[st.Cid] = st
+			ts.syncSetStream(st.Cid, st)
 			ts.streamch <- st
 		} else if respFrame.Type == protocol.STREAM_FRAME {
 			// find stream , write stream
 			streamId := respFrame.Cid
-			stream := ts.streams[streamId]
+			stream := ts.syncGetStream(streamId)
 			if stream == nil {
 				ts.resetStream(streamId)
 				continue
@@ -159,7 +160,7 @@ func (ts *TunnelStub) readWorker() {
 			ts.destroyStream(respFrame.Cid)
 		} else if respFrame.Type == protocol.EST_FRAME {
 			streamId := respFrame.Cid
-			stream := ts.streams[streamId]
+			stream := ts.syncGetStream(streamId)
 			if stream == nil {
 				ts.resetStream(streamId)
 				continue
@@ -179,7 +180,7 @@ func (ts *TunnelStub) StartStream(addr []byte) *Stream {
 	}
 	streamId := ts.seq
 	stream := NewStream(streamId, addr, ts)
-	ts.streams[streamId] = stream
+	ts.syncSetStream(streamId, stream)
 	frame := &protocol.Frame{Cid: streamId, Type: protocol.INIT_FRAME, Data: addr}
 	ts.sendch <- frame
 	return stream
@@ -190,11 +191,30 @@ func (ts *TunnelStub) SetReady(stream *Stream) {
 }
 
 func (ts *TunnelStub) destroyStream(streamId uint32) {
-	stream := ts.streams[streamId]
+	stream := ts.syncGetStream(streamId)
 	if stream != nil {
 		stream.Close()
-		delete(ts.streams, streamId)
+		ts.syncDelStream(streamId)
 	}
+}
+
+func (ts *TunnelStub) syncGetStream(streamId uint32) *Stream {
+	defer ts.mlock.Unlock()
+
+	ts.mlock.Lock()
+	return ts.streams[streamId]
+}
+
+func (ts *TunnelStub) syncSetStream(streamId uint32, stream *Stream) {
+	ts.mlock.Lock()
+	ts.streams[streamId] = stream
+	ts.mlock.Unlock()
+}
+
+func (ts *TunnelStub) syncDelStream(streamId uint32) {
+	ts.mlock.Lock()
+	delete(ts.streams, streamId)
+	ts.mlock.Unlock()
 }
 
 func (ts *TunnelStub) Ping() {
