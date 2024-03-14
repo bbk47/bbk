@@ -11,6 +11,6 @@ func Forward(left, right io.ReadWriteCloser, label string, logger *toolbox.Logge
 	defer right.Close()
 	_, err := io.Copy(right, left)
 	if err != nil {
-		logger.Errorf("%s\n%s\n", label, err.Error())
+		logger.Debugf("%s\n%s\n", label, err.Error())
 	}
 }

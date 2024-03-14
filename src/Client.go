@@ -98,7 +98,7 @@ func (cli *Client) listenStream() {
 			// send to proxy
 
 			case <-time.After(15 * time.Second):
-				cli.logger.Warnf("===timeout===!")
+				// cli.logger.Warnf("===timeout===!")
 				continue
 			}
 		}

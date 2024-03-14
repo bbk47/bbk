@@ -150,7 +150,7 @@ func (ts *TunnelStub) readWorker() {
 			err := stream.produce(respFrame.Data)
 			//fmt.Println("produce okok")
 			if err != nil {
-				fmt.Println("produce err:", err)
+				// fmt.Println("produce err:", err)
 				ts.closeStream(streamId)
 			}
 		} else if respFrame.Type == protocol.FIN_FRAME {
