@@ -3,11 +3,12 @@ package protocol
 import "github.com/bbk47/toolbox"
 
 const (
-	INIT_FRAME   uint8 = 0x0
-	STREAM_FRAME uint8 = 0x1
-	FIN_FRAME    uint8 = 0x2
-	RST_FRAME    uint8 = 0x3
-	EST_FRAME    uint8 = 0x4
+	INIT_FRAME          uint8 = 0x0
+	STREAM_FRAME        uint8 = 0x1
+	FIN_FRAME           uint8 = 0x2
+	RST_FRAME           uint8 = 0x3
+	EST_FRAME           uint8 = 0x4
+	WINDOW_UPDATE_FRAME uint8 = 0x5
 	// ping pong
 	PING_FRAME uint8 = 0x6
 	PONG_FRAME uint8 = 0x9

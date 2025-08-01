@@ -2,56 +2,95 @@ package stub
 
 import (
 	"io"
+	"sync"
 )
 
 type Stream struct {
-	Cid  uint32
-	Addr []byte
-	ts   *TunnelStub
-	rp   *io.PipeReader
-	wp   *io.PipeWriter
+	Cid                uint32
+	Addr               []byte
+	ts                 *TunnelStub
+	rp                 *io.PipeReader
+	wp                 *io.PipeWriter
+	windowSize         uint32
+	sentBytes          uint32
+	ackBytes           uint32
+	pendingData        [][]byte
+	sendWindowUpdateFn func(uint32)
+	mu                 sync.Mutex
 }
 
 func NewStream(cid uint32, addr []byte, ts *TunnelStub) *Stream {
-	s := &Stream{}
-	s.Cid = cid
-	s.Addr = addr
-	s.ts = ts
-	rp, wp := io.Pipe()
-	s.rp = rp
-	s.wp = wp
+	s := &Stream{
+		Cid:        cid,
+		Addr:       addr,
+		ts:         ts,
+		windowSize: 32 * 1024, // 32KB
+	}
+	s.rp, s.wp = io.Pipe()
 	return s
 }
 
 func (s *Stream) produce(data []byte) error {
-	//fmt.Printf("produce wp====:%x\n", data)
 	_, err := s.wp.Write(data)
 	return err
 }
 
-func (s *Stream) Read(data []byte) (n int, err error) {
-	n, err = s.rp.Read(data)
+func (s *Stream) Read(p []byte) (int, error) {
+	n, err := s.rp.Read(p)
 	if err == io.ErrClosedPipe {
-		// ErrClosedPipe emit only stream.Close()  called
-		//fmt.Println("ErrClosedPipe received=====")
 		return 0, io.EOF
 	}
-	//fmt.Printf("target read====:%x  len:%d\n", data[:n], n)
+	if n > 0 && s.sendWindowUpdateFn != nil {
+		s.sendWindowUpdateFn(uint32(n)) // 调用窗口更新函数，通知可以发送更多数据
+	}
 	return n, err
 }
 
-func (s *Stream) Write(p []byte) (n int, err error) {
-	//fmt.Printf("write stream[%s] data:%x\n", s.Cid, p)
+func (s *Stream) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 如果已用窗口大于限制，缓存数据
+	if s.sentBytes-s.ackBytes >= s.windowSize {
+		// 缓存数据
+		buf := make([]byte, len(p))
+		copy(buf, p)
+		s.pendingData = append(s.pendingData, buf)
+		return len(p), nil
+	}
+
+	// 否则立即发送
+	s.sentBytes += uint32(len(p))
 	buf2 := make([]byte, len(p))
-	// go中使用io.Copy时，底层使用slice作为buffer cache,传入的p一直是同一个切片, 实现的目标 Writer 不能及时消费写入的数据，会导致数据覆盖
-	copy(buf2, p) // io.Copy buf must copy data
+	copy(buf2, p)
 	s.ts.sendDataFrame(s.Cid, buf2)
 	return len(p), nil
 }
 
+// 处理窗口更新帧（即确认数据被对方接收了）
+func (s *Stream) HandleWindowUpdate(n uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ackBytes += n
+
+	// 尝试从 pending 队列中发送数据
+	for len(s.pendingData) > 0 && s.sentBytes-s.ackBytes < s.windowSize {
+		chunk := s.pendingData[0]
+		s.pendingData = s.pendingData[1:]
+
+		s.sentBytes += uint32(len(chunk))
+		s.ts.sendDataFrame(s.Cid, chunk)
+	}
+}
+
 func (s *Stream) Close() error {
-	//log.Println("closeing ch")
 	s.rp.Close()
 	s.wp.Close()
 	return nil
+}
+
+// 注册窗口更新回调
+func (s *Stream) SetSendWindowUpdateFn(fn func(n uint32)) {
+	s.sendWindowUpdateFn = fn
 }

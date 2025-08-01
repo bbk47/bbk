@@ -57,6 +57,10 @@ func (ts *TunnelStub) sendDataFrame(streamId uint32, data []byte) {
 	frame := &protocol.Frame{Cid: streamId, Type: protocol.STREAM_FRAME, Data: data}
 	ts.sendch <- frame
 }
+func (ts *TunnelStub) sendWindowUpdateFrame(streamId uint32, n uint32) {
+	frame := &protocol.Frame{Cid: streamId, Type: protocol.WINDOW_UPDATE_FRAME, Data: []byte{byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n & 0xff)}}
+	ts.sendch <- frame
+}
 
 func (ts *TunnelStub) sendFrame(frame *protocol.Frame) error {
 	frames := protocol.FrameSegment(frame)
@@ -137,6 +141,11 @@ func (ts *TunnelStub) readWorker() {
 			//fmt.Println("init stream ====")
 			// create stream for server
 			st := NewStream(respFrame.Cid, respFrame.Data, ts)
+			// 设置窗口更新发送函数
+			st.SetSendWindowUpdateFn(func(n uint32) {
+				// 发送窗口更新帧，告知可以再发 n 字节
+				ts.sendWindowUpdateFrame(st.Cid, n)
+			})
 			ts.syncSetStream(st.Cid, st)
 			ts.streamch <- st
 		} else if respFrame.Type == protocol.STREAM_FRAME {
@@ -153,6 +162,16 @@ func (ts *TunnelStub) readWorker() {
 				// fmt.Println("produce err:", err)
 				ts.closeStream(streamId)
 			}
+		} else if respFrame.Type == protocol.WINDOW_UPDATE_FRAME {
+			// find stream , write stream
+			streamId := respFrame.Cid
+			stream := ts.syncGetStream(streamId)
+			if stream == nil {
+				return
+			}
+			// 更新窗口大小
+			n := uint32(respFrame.Data[0])<<24 | uint32(respFrame.Data[1])<<16 | uint32(respFrame.Data[2])<<8 | uint32(respFrame.Data[3])
+			stream.HandleWindowUpdate(n)
 		} else if respFrame.Type == protocol.FIN_FRAME {
 			ts.destroyStream(respFrame.Cid)
 		} else if respFrame.Type == protocol.RST_FRAME {
@@ -180,6 +199,10 @@ func (ts *TunnelStub) StartStream(addr []byte) *Stream {
 	}
 	streamId := ts.seq
 	stream := NewStream(streamId, addr, ts)
+	stream.SetSendWindowUpdateFn(func(n uint32) {
+		// 发送窗口更新帧，告知可以再发 n 字节
+		ts.sendWindowUpdateFrame(stream.Cid, n)
+	})
 	ts.syncSetStream(streamId, stream)
 	frame := &protocol.Frame{Cid: streamId, Type: protocol.INIT_FRAME, Data: addr}
 	ts.sendch <- frame
