@@ -167,7 +167,7 @@ func (ts *TunnelStub) readWorker() {
 			streamId := respFrame.Cid
 			stream := ts.syncGetStream(streamId)
 			if stream == nil {
-				return
+				continue
 			}
 			// 更新窗口大小
 			n := uint32(respFrame.Data[0])<<24 | uint32(respFrame.Data[1])<<16 | uint32(respFrame.Data[2])<<8 | uint32(respFrame.Data[3])
