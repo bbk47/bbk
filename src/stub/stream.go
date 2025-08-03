@@ -1,6 +1,7 @@
 package stub
 
 import (
+	"fmt"
 	"io"
 	"sync"
 )
@@ -41,6 +42,7 @@ func (s *Stream) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 	if n > 0 && s.sendWindowUpdateFn != nil {
+		fmt.Printf("stream %d read %d bytes, sending window update\n", s.Cid, n)
 		s.sendWindowUpdateFn(uint32(n)) // 调用窗口更新函数，通知可以发送更多数据
 	}
 	return n, err
@@ -73,7 +75,7 @@ func (s *Stream) HandleWindowUpdate(n uint32) {
 	defer s.mu.Unlock()
 
 	s.ackBytes += n
-
+	fmt.Printf("handle window update: ackBytes=%d, sentBytes=%d\n", s.ackBytes, s.sentBytes)
 	// 尝试从 pending 队列中发送数据
 	for len(s.pendingData) > 0 && s.sentBytes-s.ackBytes < s.windowSize {
 		chunk := s.pendingData[0]
