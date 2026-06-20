@@ -1,3 +1,8 @@
+## 3.4.0
+
+- feat: reuse toolbox/mux, support stream half-close
+- fix: stub close/race condition
+
 ## 3.0.1
 
 - fix: close connection exception
