@@ -59,8 +59,7 @@ func (sir *Server) handleStream(serstub *stub.TunnelStub, stream *stub.Stream) {
 	sir.logger.Infof("DIAL SUCCESS==>%s\n", remoteAddr)
 	serstub.SetReady(stream)
 	sir.logger.Infof("Forwarding ==>%s\n", remoteAddr)
-	go utils.Forward(stream, tsocket, "stream->tsocket:"+remoteAddr, sir.logger)
-	utils.Forward(tsocket, stream, "tsocket->stream:"+remoteAddr, sir.logger)
+	utils.Relay(stream, tsocket, sir.logger)
 	sir.logger.Infof("Stream CLOSE==>%s\n", remoteAddr)
 }
 

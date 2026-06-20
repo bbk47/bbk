@@ -10,7 +10,13 @@ type ProxySocket interface {
 	Read(b []byte) (n int, err error)
 	Write(b []byte) (n int, err error)
 	Close() error
+	CloseWrite() error
 	GetAddr() []byte
+}
+
+// closeWriter 由 *net.TCPConn / *tls.Conn 实现，用于半关闭写端。
+type closeWriter interface {
+	CloseWrite() error
 }
 
 type Socks5Proxy struct {
@@ -26,6 +32,13 @@ func (s *Socks5Proxy) Write(buf []byte) (n int, err error) {
 }
 func (s *Socks5Proxy) Close() error {
 	return s.conn.Close()
+}
+
+func (s *Socks5Proxy) CloseWrite() error {
+	if cw, ok := s.conn.(closeWriter); ok {
+		return cw.CloseWrite()
+	}
+	return nil
 }
 
 func (s *Socks5Proxy) GetAddr() []byte {

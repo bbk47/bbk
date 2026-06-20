@@ -122,8 +122,7 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	select {
 	case stream := <-browserobj.stream_ch: // 收到信号才开始读
 		cli.logger.Infof("EST success:%s \n", remoteaddr)
-		go utils.Forward(socket, stream, "socket->stream:"+remoteaddr, cli.logger)
-		utils.Forward(stream, socket, "stream->socket:"+remoteaddr, cli.logger) // await stream to socket complete
+		utils.Relay(socket, stream, cli.logger) // 双向转发（支持半关闭），直到两端结束
 		cli.wlock.Lock()
 		delete(cli.browserProxy, stream.Cid)
 		cli.wlock.Unlock()

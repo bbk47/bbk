@@ -23,6 +23,13 @@ func (s *ConnectProxy) Close() error {
 	return s.conn.Close()
 }
 
+func (s *ConnectProxy) CloseWrite() error {
+	if cw, ok := s.conn.(closeWriter); ok {
+		return cw.CloseWrite()
+	}
+	return nil
+}
+
 func (s *ConnectProxy) GetAddr() []byte {
 	return s.addrBuf
 }

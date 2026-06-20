@@ -30,6 +30,7 @@ func NewTunnelStub(tsport transport.Transport, serizer *serializer.Serializer) *
 	stub.streamch = make(chan *Stream, 1024)
 	stub.sendch = make(chan *protocol.Frame, 1024)
 	stub.streams = make(map[uint32]*Stream)
+	stub.closech = make(chan uint8)
 	go stub.readWorker()
 	go stub.writeWorker()
 	return &stub
@@ -55,6 +56,12 @@ func (ts *TunnelStub) sendTinyFrame(frame *protocol.Frame) error {
 
 func (ts *TunnelStub) sendDataFrame(streamId uint32, data []byte) {
 	frame := &protocol.Frame{Cid: streamId, Type: protocol.STREAM_FRAME, Data: data}
+	ts.sendch <- frame
+}
+
+// sendFinFrame 半关闭：本端写端关闭时通知对端不再发送数据。
+func (ts *TunnelStub) sendFinFrame(streamId uint32) {
+	frame := &protocol.Frame{Cid: streamId, Type: protocol.FIN_FRAME, Data: []byte{0x1, 0x1}}
 	ts.sendch <- frame
 }
 func (ts *TunnelStub) sendWindowUpdateFrame(streamId uint32, n uint32) {
@@ -100,7 +107,8 @@ func (ts *TunnelStub) writeWorker() {
 func (ts *TunnelStub) readWorker() {
 	fmt.Println("readworker====")
 	defer func() {
-		ts.closech <- 1
+		ts.releaseAllStream()
+		close(ts.closech)
 	}()
 	for {
 		packet, err := ts.tsport.ReadPacket()
@@ -156,7 +164,7 @@ func (ts *TunnelStub) readWorker() {
 				ts.resetStream(streamId)
 				continue
 			}
-			err := stream.produce(respFrame.Data)
+			err := stream.Produce(respFrame.Data)
 			//fmt.Println("produce okok")
 			if err != nil {
 				// fmt.Println("produce err:", err)
@@ -173,7 +181,11 @@ func (ts *TunnelStub) readWorker() {
 			n := uint32(respFrame.Data[0])<<24 | uint32(respFrame.Data[1])<<16 | uint32(respFrame.Data[2])<<8 | uint32(respFrame.Data[3])
 			stream.HandleWindowUpdate(n)
 		} else if respFrame.Type == protocol.FIN_FRAME {
-			ts.destroyStream(respFrame.Cid)
+			// 半关闭：对端不再发送数据，只关本地读端，写端仍可继续发送
+			stream := ts.syncGetStream(respFrame.Cid)
+			if stream != nil {
+				stream.RemoteFin()
+			}
 		} else if respFrame.Type == protocol.RST_FRAME {
 			//destory stream
 			ts.destroyStream(respFrame.Cid)
@@ -218,6 +230,19 @@ func (ts *TunnelStub) destroyStream(streamId uint32) {
 	if stream != nil {
 		stream.Close()
 		ts.syncDelStream(streamId)
+	}
+}
+
+func (ts *TunnelStub) releaseAllStream() {
+	// 先在锁内快照所有 cid，再逐个销毁，避免与 syncDelStream 形成 map 读写竞争。
+	ts.mlock.Lock()
+	cids := make([]uint32, 0, len(ts.streams))
+	for cid := range ts.streams {
+		cids = append(cids, cid)
+	}
+	ts.mlock.Unlock()
+	for _, cid := range cids {
+		ts.destroyStream(cid)
 	}
 }
 
