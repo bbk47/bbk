@@ -37,14 +37,16 @@ func Relay(a, b io.ReadWriteCloser, logger *toolbox.Logger) {
 		if err != nil && logger != nil {
 			logger.Debugf("%s\n%s\n", label, err.Error())
 		}
-		if hc, ok := dst.(halfCloser); ok {
-			_ = hc.CloseWrite()
-		} else {
-			closeBoth()
+		if err == nil {
+			if hc, ok := dst.(halfCloser); ok {
+				_ = hc.CloseWrite()
+				return
+			}
 		}
+		closeBoth()
 	}
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(1)
 	go func() { defer wg.Done(); pipe(a, b, "b->a") }()
 	pipe(b, a, "a->b")
 	wg.Wait()
