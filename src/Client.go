@@ -2,6 +2,7 @@ package bbk
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -91,7 +92,9 @@ func (cli *Client) listenStream() {
 			return
 		}
 		//fmt.Println("=====>get stream")
+		cli.wlock.Lock()
 		browerobj := cli.browserProxy[stream.Cid]
+		cli.wlock.Unlock()
 		if browerobj != nil {
 			select {
 			case browerobj.stream_ch <- stream:
@@ -108,12 +111,17 @@ func (cli *Client) listenStream() {
 func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	defer socket.Close()
 
-	addrInfo, err := toolbox.ParseAddrInfo(socket.GetAddr())
-	if err != nil {
-		cli.logger.Infof("prase addr info err:%s\n", err.Error())
-		return
+	var remoteaddr string
+	if proxy.IsUDPMarker(socket.GetAddr()) {
+		remoteaddr = "udp-associate"
+	} else {
+		addrInfo, err := toolbox.ParseAddrInfo(socket.GetAddr())
+		if err != nil {
+			cli.logger.Infof("prase addr info err:%s\n", err.Error())
+			return
+		}
+		remoteaddr = fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
 	}
-	remoteaddr := fmt.Sprintf("%s:%d", addrInfo.Addr, addrInfo.Port)
 	cli.logger.Infof("COMMAND===%s\n", remoteaddr)
 
 	browserobj := &BrowserObj{proxysocket: socket, stream_ch: make(chan *stub.Stream)}
@@ -122,7 +130,13 @@ func (cli *Client) bindProxySocket(socket proxy.ProxySocket) {
 	select {
 	case stream := <-browserobj.stream_ch: // 收到信号才开始读
 		cli.logger.Infof("EST success:%s \n", remoteaddr)
-		utils.Relay(socket, stream, cli.logger) // 双向转发（支持半关闭），直到两端结束
+		if up, ok := socket.(*proxy.Socks5UDPProxy); ok {
+			// SOCKS5 规定：控制 TCP 连接关闭即代表 UDP 关联结束。
+			go func() { _, _ = io.Copy(io.Discard, up.CtrlConn()); up.Close() }()
+			proxy.ClientUDP(up.UDPConn(), stream, cli.logger)
+		} else {
+			utils.Relay(socket, stream, cli.logger) // 双向转发（支持半关闭），直到两端结束
+		}
 		cli.wlock.Lock()
 		delete(cli.browserProxy, stream.Cid)
 		cli.wlock.Unlock()

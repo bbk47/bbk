@@ -1,0 +1,16 @@
+{
+  "mode": "client",
+  "listenAddr": "127.0.0.1",
+  "listenPort": 1090,
+  "logLevel": "info",
+  "tunnelOpts": {
+    "protocol": "ws",
+    "secure": false,
+    "host": "127.0.0.1",
+    "port": "5900",
+    "path": "/websocket",
+    "method": "aes-256-cfb",
+    "password": "p@ssword"
+  },
+  "ping": true
+}

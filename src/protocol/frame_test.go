@@ -12,8 +12,9 @@ func TestFrameStatic(t *testing.T) {
 	frame1 := Frame{Cid: 172738123, Type: 1, Data: []byte{0x1, 0x2, 0x3, 0x4}}
 	result := Encode(&frame1)
 	fmt.Println(len(result))
-	if len(result) != 2+4+4 {
-		t.Errorf("test derialize failed! assert len=10!")
+	// 头部 = mask(2)+version(1)+type(1)+cid(4) = 8 字节，加 4 字节负载 = 12
+	if len(result) != 8+4 {
+		t.Errorf("test derialize failed! assert len=12!")
 	}
 	log.Println(toolbox.GetBytesHex(result))
 
@@ -49,8 +50,9 @@ func TestFrameDynamicData(t *testing.T) {
 	randata := toolbox.GetRandByte(20)
 	frame := Frame{Cid: 12128, Type: 1, Data: randata}
 	result := Encode(&frame)
-	if len(result) != 6+20 {
-		t.Errorf("test derialize failed! assert len=6+20!")
+	// 头部 8 字节 + 20 字节负载 = 28
+	if len(result) != 8+20 {
+		t.Errorf("test derialize failed! assert len=8+20!")
 	}
 	frame2, err := Decode(result)
 	if err != nil {

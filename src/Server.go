@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/bbk47/bbk/v3/src/proxy"
 	"github.com/bbk47/bbk/v3/src/serializer"
 	"github.com/bbk47/bbk/v3/src/server"
 	"github.com/bbk47/bbk/v3/src/stub"
@@ -44,6 +45,14 @@ func (sir *Server) handleConnection(tunnel *server.TunnelConn) {
 
 func (sir *Server) handleStream(serstub *stub.TunnelStub, stream *stub.Stream) {
 	defer stream.Close()
+
+	if proxy.IsUDPMarker(stream.Addr) {
+		sir.logger.Infof("REQ UDP ASSOCIATE\n")
+		serstub.SetReady(stream)
+		proxy.ServeUDP(stream, sir.logger)
+		sir.logger.Infof("UDP ASSOCIATE CLOSE\n")
+		return
+	}
 
 	addrInfo, err := toolbox.ParseAddrInfo(stream.Addr)
 	if err != nil {
