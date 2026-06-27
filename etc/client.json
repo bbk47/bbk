@@ -2,7 +2,6 @@
   "mode": "client",
   "listenAddr": "127.0.0.1",
   "listenPort": 1090,
-  "listenHttpPort": 1087,
   "logLevel": "info",
   "tunnelOpts": {
     "protocol": "ws",

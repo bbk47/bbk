@@ -5,18 +5,15 @@ import (
 	"net"
 
 	"github.com/bbk47/bbk/v3/src/proxy"
-	"github.com/bbk47/bbk/v3/src/serializer"
 	"github.com/bbk47/bbk/v3/src/server"
-	"github.com/bbk47/bbk/v3/src/stub"
-	"github.com/bbk47/bbk/v3/src/transport"
+	"github.com/bbk47/bbk/v3/src/tunnel"
 	"github.com/bbk47/bbk/v3/src/utils"
 	"github.com/bbk47/toolbox"
 )
 
 type Server struct {
-	opts    *ServerOpts
-	logger  *toolbox.Logger
-	serizer *serializer.Serializer
+	opts   *ServerOpts
+	logger *toolbox.Logger
 }
 
 func NewServer(opt *ServerOpts) Server {
@@ -27,28 +24,41 @@ func NewServer(opt *ServerOpts) Server {
 	return s
 }
 
-func (sir *Server) handleConnection(tunnel *server.TunnelConn) {
-	tsport := transport.WrapTunnel(tunnel)
-	serverStub := stub.NewTunnelStub(tsport, sir.serizer)
+func (sir *Server) handleConnection(tunnelConn *server.TunnelConn) {
+	raw := serverCarrierRWC(tunnelConn)
+	secure, err := tunnel.ServerSecure(raw, sir.opts.Method, sir.opts.Password)
+	if err != nil {
+		sir.logger.Errorf("secure handshake err:%s\n", err.Error())
+		_ = raw.Close()
+		return
+	}
+	sess, err := tunnel.Server(secure)
+	if err != nil {
+		sir.logger.Errorf("yamux server err:%s\n", err.Error())
+		_ = secure.Close()
+		return
+	}
 	go func() {
+		defer sess.Close()
 		for {
-			stream, err := serverStub.Accept()
+			stream, err := sess.AcceptStream()
 			if err != nil {
-				// transport error
 				sir.logger.Errorf("stream accept err:%s\n", err.Error())
 				return
 			}
-			go sir.handleStream(serverStub, stream)
+			go sir.handleStream(stream)
 		}
 	}()
 }
 
-func (sir *Server) handleStream(serstub *stub.TunnelStub, stream *stub.Stream) {
+func (sir *Server) handleStream(stream *tunnel.Stream) {
 	defer stream.Close()
 
 	if proxy.IsUDPMarker(stream.Addr) {
 		sir.logger.Infof("REQ UDP ASSOCIATE\n")
-		serstub.SetReady(stream)
+		if err := stream.SetReady(); err != nil {
+			return
+		}
 		proxy.ServeUDP(stream, sir.logger)
 		sir.logger.Infof("UDP ASSOCIATE CLOSE\n")
 		return
@@ -62,11 +72,14 @@ func (sir *Server) handleStream(serstub *stub.TunnelStub, stream *stub.Stream) {
 	sir.logger.Infof("REQ CONNECT=>%s\n", remoteAddr)
 	tsocket, err := net.Dial("tcp", remoteAddr)
 	if err != nil {
+		// 不发就绪状态：client 侧 OpenStream 将收到错误（等价旧的"无 EST"）。
 		return
 	}
 	defer tsocket.Close()
 	sir.logger.Infof("DIAL SUCCESS==>%s\n", remoteAddr)
-	serstub.SetReady(stream)
+	if err := stream.SetReady(); err != nil {
+		return
+	}
 	sir.logger.Infof("Forwarding ==>%s\n", remoteAddr)
 	utils.Relay(stream, tsocket, sir.logger)
 	sir.logger.Infof("Stream CLOSE==>%s\n", remoteAddr)
@@ -100,16 +113,6 @@ func (sir *Server) initServer() {
 	}
 }
 
-func (sir *Server) initSerizer() {
-	opt := sir.opts
-	serizer, err := serializer.NewSerializer(opt.Method, opt.Password)
-	if err != nil {
-		sir.logger.Fatal(err)
-	}
-	sir.serizer = serizer
-}
-
 func (sir *Server) Bootstrap() {
-	sir.initSerizer()
 	sir.initServer()
 }

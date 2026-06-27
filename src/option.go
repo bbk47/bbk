@@ -14,7 +14,7 @@ type ClientOpts struct {
 	Mode           string      `json:"mode"`
 	ListenAddr     string      `json:"listenAddr"`
 	ListenPort     int         `json:"listenPort"`
-	ListenHttpPort int         `json:"listenPort"`
+	ListenHttpPort int         `json:"listenHttpPort"`
 	LogLevel       string      `json:"logLevel"`
 	Ping           bool        `json:"ping"`
 	TunnelOpts     *TunnelOpts `json:"tunnelOpts"`
